@@ -1,0 +1,47 @@
+# ── Participant data and everything derived from it (never commit) ──
+data/
+data_clean/
+datatest/
+classifier_store/
+
+# ── Settings specific to one machine / one user ──
+gesture_sets/
+clf_datasets.json
+devices.json
+known_taps.json
+
+# ── Python environments and caches ──
+venv/
+buildenv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# ── Build output ──
+build/
+dist/
+installer/
+wheels/
+*.egg-info/
+*.tar
+
+# ── Tools and OS ──
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Heavy / generated files ──
+*.log
+*.tmp
+*.keras
+*.h5
+*.onnx
+*.tflite
+*.pt
+*.pth
+*.joblib
+*.pkl

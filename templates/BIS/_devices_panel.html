@@ -1,0 +1,279 @@
+<!-- ═══════════════════════════════════════════════════════════
+     Panneau « Appareils » — inclus par examiner.html (et examiner_en.html)
+     Tout se règle ici, sans toucher au code : ajouter / retirer des TapStrap et TapXR,
+     choisir quel appareil physique va dans quel emplacement, voir l'état de chacun.
+     Dépend de : toast(), charts (script principal de la page examinateur).
+     ═══════════════════════════════════════════════════════════ -->
+<style>
+  .tap-card.warn { border-color:var(--warn); }
+  .tap-card.bad  { border-color:var(--red); }
+  .tap-status.warn { color:var(--warn); }
+  .tap-status.bad  { color:var(--red); }
+  .dev-sub { font-size:.58rem; color:var(--muted); margin-top:3px; width:100%; word-break:break-all; }
+  .dev-pill { font-size:.56rem; padding:1px 6px; border-radius:3px; margin-left:4px; }
+  .dot.warn { background:var(--warn); }
+  .dot.bad  { background:var(--red); }
+  .dev-rate { font-size:.6rem; color:var(--muted); margin-top:3px; width:100%; }
+  .dev-rate b { font-weight:500; color:var(--green); }
+  .dev-rate b.low { color:var(--warn); }
+  .dev-rate b.zero { color:var(--red); }
+  #device-extra { display:none; margin:2px 0 6px; font-size:.62rem; color:var(--warn); line-height:1.45;
+                  padding:6px 9px; border:1px dashed var(--warn); border-radius:6px; }
+  #preflight-msg { display:none; margin-top:8px; font-size:.64rem; color:var(--warn); line-height:1.4; }
+
+  .plot-dev-title { font-size:.72rem; letter-spacing:.08em; text-transform:uppercase; color:var(--text);
+                    margin-bottom:8px; padding-bottom:5px; border-bottom:1px solid var(--border); }
+  .plot-dev-sub { font-size:.6rem; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin:6px 0; }
+
+  #dev-modal { position:fixed; inset:0; background:rgba(0,0,0,.65); display:none; z-index:50;
+               align-items:center; justify-content:center; padding:20px; }
+  #dev-modal.show { display:flex; }
+  .dev-box { background:var(--surface); border:1px solid var(--border); border-radius:10px;
+             width:min(760px,100%); max-height:88vh; overflow-y:auto; padding:18px 20px; }
+  .dev-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+  .dev-head h2 { font-family:var(--disp); font-size:1rem; font-weight:800; color:var(--accent); }
+  .dev-x { background:none; border:none; color:var(--muted); font-size:1.2rem; cursor:pointer; }
+  .dev-x:hover { color:var(--text); }
+  .dev-help { font-size:.64rem; color:var(--muted); line-height:1.5; margin-bottom:14px; }
+  .dev-add { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+  .dev-row { display:grid; grid-template-columns:150px 1fr auto auto; gap:10px; align-items:center;
+             padding:9px 10px; border:1px solid var(--border); border-radius:6px; background:var(--bg);
+             margin-bottom:6px; font-size:.74rem; }
+  .dev-row.on { border-color:var(--green); }
+  .dev-row select { background:var(--panel); border:1px solid var(--border); color:var(--text);
+                    font-family:var(--mono); font-size:.7rem; padding:5px 7px; border-radius:5px; min-width:0; width:100%; }
+  .dev-row select:disabled { opacity:.4; }
+  .dev-req { display:flex; align-items:center; gap:5px; font-size:.62rem; color:var(--muted); white-space:nowrap; }
+  .dev-del { background:none; border:1px solid var(--border); color:var(--muted); border-radius:5px;
+             cursor:pointer; padding:4px 8px; font-size:.75rem; }
+  .dev-del:hover:not(:disabled) { border-color:var(--red); color:var(--red); }
+  .dev-del:disabled { opacity:.3; cursor:not-allowed; }
+  .dev-sec { font-size:.6rem; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); margin:14px 0 6px; }
+  .dev-un { font-size:.68rem; color:var(--warn); padding:6px 10px; border:1px dashed var(--warn);
+            border-radius:6px; margin-bottom:6px; }
+  .dev-lock { font-size:.66rem; color:var(--warn); margin-bottom:10px; }
+</style>
+
+<div id="dev-modal" role="dialog" aria-modal="true">
+  <div class="dev-box">
+    <div class="dev-head">
+      <h2 id="dev-title"></h2>
+      <button class="dev-x" id="dev-close" aria-label="close">✕</button>
+    </div>
+    <div class="dev-help" id="dev-help"></div>
+    <div class="dev-lock" id="dev-lock" style="display:none"></div>
+    <div class="dev-add" id="dev-add"></div>
+    <div id="dev-rows"></div>
+    <div id="dev-unassigned"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const LANG = (document.documentElement.lang || 'fr').toLowerCase().startsWith('en') ? 'en' : 'fr';
+  const TXT = {
+    fr: {
+      title: 'Gérer les appareils',
+      help: "Chaque ligne est un emplacement de l'expérience (ses fichiers portent son nom, ex. TAP1). " +
+            "Ajoute autant de TapStrap et de TapXR que nécessaire, puis clique sur « Connecter » : les appareils allumés " +
+            "se rangent automatiquement selon leur type. Pour choisir toi-même quel bracelet va dans quel emplacement, " +
+            "utilise la liste déroulante de la ligne. Les changements s'appliquent tout de suite.",
+      add: '＋ Ajouter un', off: 'Non connecté', ok: 'Reçoit des données ✓', noData: 'Connecté — aucune donnée',
+      mismatch: 'mauvais emplacement ?', optional: 'optionnel', required: 'requis', del: 'Retirer cet emplacement',
+      free: 'aucun appareil', detectHint: "clique d'abord sur « Connecter » pour détecter les appareils",
+      unassigned: 'Détectés mais sans emplacement', unassignedHelp: "ajoute un emplacement du bon type, ou choisis-le dans la liste d'un emplacement",
+      confirmDel: "Retirer cet emplacement ? Les anciens fichiers gardent leur nom ; ce numéro ne sera plus réutilisé.",
+      locked: 'Essai en cours : modification impossible', fingers: 'Doigts', noDevices: 'Aucun appareil configuré',
+      swap: 'échange', manage: '⚙ Gérer les appareils', reqHelp: 'requis = bloque le départ si absent',
+      fingersShort: 'doigts', rateHelp: 'débit réel / attendu', idle: 'en veille', stillRaw: 'envoie encore des données brutes',
+      extra: n => `${n} Tap allumé${n > 1 ? 's' : ''} sans emplacement : il occupe quand même le Bluetooth et réduit le débit des autres. Éteins-le ou retire-le du jumelage Windows.`,
+      lost: n => `${n} paquets perdus côté logiciel`
+    },
+    en: {
+      title: 'Manage devices',
+      help: "Each row is a slot of the experiment (its files carry its name, e.g. TAP1). " +
+            "Add as many TapStraps and TapXRs as needed, then click “Connect”: powered-on devices are placed " +
+            "automatically according to their type. To choose yourself which band goes in which slot, " +
+            "use the drop-down of the row. Changes apply immediately.",
+      add: '＋ Add a', off: 'Not connected', ok: 'Receiving data ✓', noData: 'Connected — no data',
+      mismatch: 'wrong slot?', optional: 'optional', required: 'required', del: 'Remove this slot',
+      free: 'no device', detectHint: 'click “Connect” first to detect devices',
+      unassigned: 'Detected but without a slot', unassignedHelp: 'add a slot of the right type, or pick it from a slot’s drop-down',
+      confirmDel: 'Remove this slot? Old files keep their name; this number will not be reused.',
+      locked: 'Trial in progress: changes are not possible', fingers: 'Fingers', noDevices: 'No device configured',
+      swap: 'swap', manage: '⚙ Manage devices', reqHelp: 'required = blocks start if missing',
+      fingersShort: 'fingers', rateHelp: 'actual / expected rate', idle: 'idle', stillRaw: 'still sending raw data',
+      extra: n => `${n} Tap${n > 1 ? 's' : ''} powered on without a slot: it still uses Bluetooth and lowers the others' rate. Turn it off or unpair it in Windows.`,
+      lost: n => `${n} packets lost in software`
+    }
+  }[LANG];
+  window.DEV_TXT = TXT;
+
+  const PALETTE = ['#5b8dee', '#4fffb0', '#f6c90e', '#ff4f7b', '#c084fc', '#f97316', '#22d3ee', '#a3e635'];
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function color(slot) {
+    const m = /(\d+)$/.exec(slot);
+    return PALETTE[((m ? parseInt(m[1], 10) : 1) - 1) % PALETTE.length];
+  }
+  function pill(slot) {
+    const c = color(slot);
+    return `<span class="tap-pill" style="background:${c}33;color:${c}">${esc(slot)}</span>`;
+  }
+  window.devPill = pill;
+
+  // ── Cartes de la barre latérale ───────────────────────────
+  let cardSig = '';
+  window.renderDeviceCards = function (s) {
+    const devs = s.devices || {};
+    const rows = Object.entries(devs).map(([slot, d]) => {
+      const flowing = d.data_age != null && d.data_age < 3;
+      const rates = Object.entries(d.rate || {}).map(([k, hz]) => [k, hz, (d.nominal || {})[k] || 0]);
+      return [slot, d.label, d.connected, d.name, d.required, (d.mismatch || []).join(','), flowing, rates];
+    });
+    const sig = JSON.stringify(rows);
+    if (sig === cardSig) return;
+    cardSig = sig;
+    document.getElementById('device-cards').innerHTML = rows.map(([slot, label, connected, name, required, mism, flowing, rates]) => {
+      const rateHtml = connected ? `<div class="dev-rate" title="${esc(TXT.rateHelp)}">` + rates.map(([k, hz, nom]) => {
+        const cls = hz === 0 ? 'zero' : (nom && hz < 0.8 * nom ? 'low' : '');
+        return `${k === 'finger' ? TXT.fingersShort : 'IMU'} <b class="${cls}">${hz}</b>/${Math.round(nom)} Hz`;
+      }).join(' · ') + '</div>' : '';
+      let cls = '', stCls = '', st = TXT.off, dot = '';
+      if (connected) {
+        if (mism)          { cls = 'bad';  stCls = 'bad';  st = '⚠ ' + TXT.mismatch; dot = 'bad'; }
+        else if (!flowing) { cls = 'warn'; stCls = 'warn'; st = TXT.noData;          dot = 'warn'; }
+        else               { cls = 'connected'; stCls = 'ok'; st = TXT.ok;           dot = 'on'; }
+      }
+      return `<div class="tap-card ${cls}" style="flex-wrap:wrap">
+        <div class="tap-label"><span class="dot ${dot}"></span>${esc(label)}${pill(slot)}${required ? '' : ` <span style="color:var(--muted);font-size:.58rem">(${TXT.optional})</span>`}</div>
+        <span class="tap-status ${stCls}">${st}</span>
+        ${name ? `<div class="dev-sub">${esc(name)}</div>` : ''}
+        ${rateHtml}
+      </div>`;
+    }).join('');
+  };
+
+  window.renderDeviceExtra = function (s) {
+    const el = document.getElementById('device-extra');
+    if (!el) return;
+    const extra = s.extra_devices || [], lost = (s.diag && s.diag.dropped) || 0;
+    const parts = [];
+    if (extra.length) parts.push('⚠ ' + TXT.extra(extra.length) + '<br>' + extra.map(x => `· ${esc(x.name)}${x.idle ? ` (${TXT.idle})` : ''}`).join('<br>'));
+    if (lost) parts.push('⚠ ' + TXT.lost(lost));
+    el.style.display = parts.length ? 'block' : 'none';
+    el.innerHTML = parts.join('<br>');
+  };
+
+  // ── Section graphiques : une par appareil ─────────────────
+  let plotSig = '';
+  window.ensurePlotSections = function (devs) {
+    const box = document.getElementById('plot-sections');
+    if (!box) return;
+    devs = devs || {};
+    const sig = Object.entries(devs).map(([s, d]) => s + ':' + Object.keys(d.counts || {}).join('+')).join('|');
+    if (sig === plotSig) return;
+    plotSig = sig;
+    box.querySelectorAll('canvas').forEach(c => { if (charts[c.id]) { charts[c.id].destroy(); delete charts[c.id]; } });
+    box.innerHTML = Object.entries(devs).map(([slot, d]) => {
+      const kinds = Object.keys(d.counts || {});
+      let h = `<div style="margin-bottom:24px"><div class="plot-dev-title">${esc(d.label)} ${pill(slot)}</div>`;
+      if (kinds.includes('finger')) {
+        h += `<div class="plot-dev-sub">${TXT.fingers}</div>
+              <div class="charts-grid mode-finger" style="margin-bottom:12px" id="grid-finger-${slot}"></div>`;
+      }
+      if (kinds.includes('imu')) {
+        const card = (name, id) => `<div class="chart-card">
+            <div class="chart-card-title">${name} ${pill(slot)}</div>
+            <div class="chart-wrap" style="height:180px"><canvas id="chart-${id}-${slot}"></canvas>
+              <div class="chart-empty" id="empty-${id}-${slot}">…</div></div></div>`;
+        h += `<div class="plot-dev-sub">IMU</div><div class="charts-grid mode-imu">${card('Accel', 'accel')}${card('Gyro', 'gyro')}</div>`;
+      }
+      return h + '</div>';
+    }).join('') || `<div style="color:var(--muted);font-size:.75rem">${TXT.noDevices}</div>`;
+  };
+
+  // ── Message « pourquoi je ne peux pas démarrer » ──────────
+  window.renderPreflight = function (s) {
+    const el = document.getElementById('preflight-msg');
+    if (!el) return;
+    const show = s.preflight && (s.phase === 'ready' || s.phase === 'idle');
+    el.style.display = show ? 'block' : 'none';
+    el.textContent = show ? '⚠ ' + s.preflight : '';
+  };
+
+  // ── Fenêtre de gestion ────────────────────────────────────
+  const modal = document.getElementById('dev-modal');
+  let timer = null, last = null;
+
+  async function call(url, body) {
+    try {
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+      const d = await r.json();
+      if (!d.ok) { toast(d.msg || 'Erreur', 'err'); }
+      else if (d.result && typeof d.result === 'string' && url.endsWith('/assign')) { toast(d.result, 'err'); }
+      else { toast('✓', 'ok'); }
+      if (d.slots) render(d); else refresh();
+    } catch (e) { toast('Erreur réseau', 'err'); }
+  }
+
+  function render(o) {
+    last = o;
+    document.getElementById('dev-title').textContent = TXT.title;
+    document.getElementById('dev-help').textContent = TXT.help;
+    const lock = document.getElementById('dev-lock');
+    lock.style.display = o.locked ? 'block' : 'none';
+    lock.textContent = o.locked ? '⏱ ' + TXT.locked : '';
+
+    // On ne reconstruit pas pendant que l'utilisateur manipule une liste déroulante
+    if (modal.contains(document.activeElement) && document.activeElement.tagName === 'SELECT') return;
+
+    document.getElementById('dev-add').innerHTML = o.types.map(t =>
+      `<button class="btn-sm" data-add="${esc(t.type)}" ${o.locked ? 'disabled' : ''}>${TXT.add} ${esc(t.label)}</button>`).join('');
+
+    const online = o.seen.filter(x => x.online);
+    document.getElementById('dev-rows').innerHTML = o.slots.map(sl => {
+      const opts = (sl.id ? '' : `<option value="">— ${TXT.free} —</option>`) + online.map(x => {
+        const other = x.slot && x.slot !== sl.slot ? ` → ${x.slot} (${TXT.swap})` : '';
+        const short = String(x.id).slice(-8);
+        return `<option value="${esc(x.id)}" ${x.id === sl.id ? 'selected' : ''}>${esc(x.name)} [${esc(short)}]${other}</option>`;
+      }).join('');
+      return `<div class="dev-row ${sl.connected ? 'on' : ''}">
+        <div><span class="dot ${sl.connected ? 'on' : ''}" style="display:inline-block;margin-right:6px"></span>${esc(sl.label)}${pill(sl.slot)}</div>
+        <select data-assign="${esc(sl.slot)}" ${(o.locked || !online.length) ? 'disabled' : ''} title="${online.length ? '' : esc(TXT.detectHint)}">${opts}</select>
+        <label class="dev-req" title="${esc(TXT.reqHelp)}"><input type="checkbox" data-req="${esc(sl.slot)}" ${sl.required ? 'checked' : ''} ${o.locked ? 'disabled' : ''}>${TXT.required}</label>
+        <button class="dev-del" data-del="${esc(sl.slot)}" title="${esc(TXT.del)}" ${(o.locked || o.slots.length <= 1) ? 'disabled' : ''}>🗑</button>
+      </div>`;
+    }).join('');
+
+    const un = online.filter(x => !x.slot);
+    document.getElementById('dev-unassigned').innerHTML = un.length
+      ? `<div class="dev-sec">${TXT.unassigned}</div>` +
+        un.map(x => `<div class="dev-un">${esc(x.name)} [${esc(String(x.id).slice(-8))}]${x.idle ? ` · ${TXT.idle}` : ''} — ${TXT.unassignedHelp}</div>`).join('')
+      : '';
+  }
+
+  async function refresh() {
+    try { render(await (await fetch('/api/devices')).json()); } catch (e) {}
+  }
+  function open()  { modal.classList.add('show'); refresh(); timer = setInterval(refresh, 1500); }
+  function close() { modal.classList.remove('show'); clearInterval(timer); timer = null; }
+
+  modal.addEventListener('click', e => {
+    if (e.target === modal) return close();
+    const add = e.target.closest('[data-add]');
+    if (add) return call('/api/devices/add', { type: add.dataset.add });
+    const del = e.target.closest('[data-del]');
+    if (del && confirm(TXT.confirmDel)) return call('/api/devices/remove', { slot: del.dataset.del });
+  });
+  modal.addEventListener('change', e => {
+    const sel = e.target.closest('[data-assign]');
+    if (sel) { if (sel.value) call('/api/devices/assign', { id: sel.value, slot: sel.dataset.assign }); return; }
+    const req = e.target.closest('[data-req]');
+    if (req) call('/api/devices/update', { slot: req.dataset.req, required: req.checked });
+  });
+  document.getElementById('dev-close').addEventListener('click', close);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && modal.classList.contains('show')) close(); });
+  const btn = document.getElementById('btn-devices');
+  if (btn) { btn.textContent = TXT.manage; btn.addEventListener('click', open); }
+})();
+</script>

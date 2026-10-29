@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TapStrap · Participant</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;800&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d0f14; --surface: #13161e; --border: #1e2330;
+    --accent: #4fffb0; --accent2: #ff4f7b; --text: #e2e8f0;
+    --muted: #4a5568; --warn: #f6c90e;
+    --mono: 'DM Mono', monospace; --disp: 'Syne', sans-serif;
+  }
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--mono);
+    min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 0;
+  }
+
+  /* ── HEADER ── */
+  header {
+    position: fixed; top: 0; left: 0; right: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 28px; height: 52px;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    z-index: 10;
+  }
+  header h1 { font-family: var(--disp); font-size: .95rem; font-weight: 800; color: var(--accent); }
+  .nav a { color: var(--muted); text-decoration: none; font-size: .72rem; letter-spacing: .08em; margin-left: 16px; }
+  .nav a:hover { color: var(--text); }
+
+  /* ── MAIN ── */
+  main {
+    margin-top: 52px;
+    width: 100%; max-width: 1400px;
+    padding: 32px 24px;
+    display: flex; flex-direction: row; gap: 32px;
+    min-height: calc(100vh - 52px);
+    align-items: flex-start;
+  }
+
+  /* Colonne gauche : contrôles */
+  .controls-col {
+    flex: 0 0 500px;
+    display: flex; flex-direction: column; align-items: flex-start;
+    gap: 24px; padding-top: 20px;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+    padding-right: 15px; /* Pour la scrollbar */
+  }
+
+  /* Colonne droite : vidéo */
+  .video-col {
+    flex: 1;
+    display: flex; flex-direction: column; align-items: center;
+  }
+
+  /* Phase badge */
+  .phase-row { display: flex; align-items: flex-start; gap: 12px; }
+  .title-stack { display: flex; flex-direction: column; gap: 4px; }
+  .gesture-title {
+    font-family: var(--disp); font-weight: 800; font-size: 1.8rem;
+    text-align: left;
+  }
+  .gesture-limb {
+    font-size: 0.95rem; color: var(--accent); font-family: var(--disp); font-weight: 700;
+  }
+  .gesture-progress {
+    font-size: 0.85rem; color: var(--muted); font-family: var(--disp);
+    letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 2px;
+  }
+  .phase-badge {
+    font-size: .62rem; letter-spacing: .12em; text-transform: uppercase;
+    padding: 4px 10px; border-radius: 3px; margin-top: 6px;
+  }
+  .phase-badge.idle      { background: var(--border); color: var(--muted); }
+  .phase-badge.ready     { background: rgba(246,201,14,.12); color: var(--warn); border: 1px solid var(--warn); }
+  .phase-badge.countdown { background: rgba(79,255,176,.12); color: var(--accent); border: 1px solid var(--accent); }
+  .phase-badge.recording { background: rgba(255,79,123,.12); color: var(--accent2); border: 1px solid var(--accent2); animation: pulse 1.2s infinite; }
+  .phase-badge.done      { background: rgba(79,255,176,.1); color: var(--accent); border: 1px solid var(--accent); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+
+  /* Rep counter */
+  .rep-row {
+    display: flex; align-items: center; gap: 16px;
+    font-size: .8rem; color: var(--muted);
+  }
+  .rep-num {
+    font-family: var(--disp); font-size: 1.6rem; font-weight: 800; color: var(--accent);
+  }
+  .pips { display: flex; gap: 5px; }
+  .pip {
+    width: 10px; height: 10px; border-radius: 3px; background: var(--border);
+    transition: background .3s;
+  }
+  .pip.done { background: var(--accent); }
+  .pip.active { background: var(--accent2); animation: pulse 1s infinite; }
+
+  /* Description & Start position */
+  .gesture-info {
+    display: flex; flex-direction: column; gap: 16px;
+    width: 100%; max-width: 600px;
+  }
+  .info-box {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px 24px; text-align: left;
+  }
+  .info-box h4 {
+    font-family: var(--disp); font-size: 0.85rem; color: var(--accent);
+    margin-bottom: 8px; letter-spacing: 0.05em; text-transform: uppercase;
+  }
+  .info-box p, .info-box div {
+    font-size: .9rem; line-height: 1.6; color: var(--text);
+  }
+
+  /* Video */
+  .video-wrapper {
+    width: 40%; /* On augmente un peu la taille dans la colonne */
+    max-width: 900px;
+     /* Hauteur relative à la fenêtre pour s'adapter à différents écrans */
+    border-radius: 1px; overflow: hidden;
+    border: 1px solid var(--border); 
+    background: #000; /* Écran noir en permanence derrière la vidéo */
+    position: relative;
+    display: flex;
+    justify-content: center;
+    aspect-ratio: 9 / 16; /* Maintient un cadre stable de type écran en attendant la vidéo */
+  }
+  video {
+    width: 100%;
+    height: 100%;
+    max-height: 85vh;
+    object-fit: cover; /* Remplit tout le wrapper sans distortion */
+    display: block;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  video.is-playing {
+    opacity: 1; /* Transparence 100% quand on ajoute la classe (pendant la lecture) */
+  
+    display: block;
+  }
+
+  /* Countdown overlay */
+  .countdown-overlay {
+    position: absolute; inset: 0; display: none;
+    align-items: center; justify-content: center; flex-direction: column; gap: 8px;
+    background: rgba(13,15,20,.85); backdrop-filter: blur(4px);
+    border-radius: 10px; z-index: 5;
+  }
+  .countdown-overlay.show { display: flex; }
+  
+  .video-countdown-overlay {
+    position: absolute; inset: 0; display: none;
+    align-items: center; justify-content: center; flex-direction: column; gap: 8px;
+    background: rgba(13,15,20,.85); backdrop-filter: blur(4px);
+    border-radius: 10px; z-index: 6;
+  }
+  .video-countdown-overlay.show { display: flex; }
+
+  .countdown-num {
+    font-family: var(--disp); font-size: 8rem; font-weight: 800; color: var(--accent);
+    line-height: 1; animation: popIn .3s cubic-bezier(.175,.885,.32,1.275);
+  }
+  @keyframes popIn { from{transform:scale(.4);opacity:0} to{transform:scale(1);opacity:1} }
+  .countdown-label { font-size: .85rem; letter-spacing: .15em; text-transform: uppercase; color: var(--muted); }
+
+  /* Done screen */
+  .done-screen {
+    display: none; flex-direction: column; align-items: center;
+    gap: 12px; text-align: center;
+  }
+  .done-screen h2 { font-family: var(--disp); font-size: 2.2rem; font-weight: 800; color: var(--accent); }
+
+  /* Video overlay idle */
+  .video-idle {
+    position: absolute; inset: 0; display: flex;
+    align-items: center; justify-content: center;
+    color: var(--muted); font-size: .85rem; pointer-events: none;
+  }
+
+  /* Lang toggle */
+  [data-lang="en"] .lang-fr { display: none !important; }
+  [data-lang="fr"] .lang-en { display: none !important; }
+  .lang-btn {
+    background: transparent; border: 1px solid var(--border);
+    color: var(--text); padding: 4px 8px; border-radius: 4px;
+    cursor: pointer; font-family: inherit; font-size: 0.8rem;
+    margin-left: 10px;
+  }
+  .lang-btn:hover { background: var(--bg-hover); }
+</style>
+</head>
+<body data-lang="fr">
+
+<header>
+  <h1>TapStrap · Participant</h1>
+  <nav class="nav">
+    <a href="/">Participant</a>
+    <a href="/examiner"><span class="lang-fr">Examinateur</span><span class="lang-en">Examiner</span></a>
+    <button class="lang-btn" onclick="toggleLang()">EN / FR</button>
+  </nav>
+</header>
+
+<main>
+  <!-- Colonne gauche : contrôles -->
+  <div class="controls-col">
+    <!-- Phase + titre -->
+    <div class="phase-row">
+      <div class="title-stack">
+        <div class="gesture-progress" id="gesture-progress"></div>
+        <div class="gesture-title" id="gesture-name">
+          <span class="lang-fr">En attente</span><span class="lang-en">Waiting</span>
+        </div>
+        <div class="gesture-limb" id="gesture-limb"></div>
+      </div>
+      <span class="phase-badge idle" id="phase-badge">Idle</span>
+    </div>
+
+    <!-- Répétitions -->
+    <div class="rep-row">
+      <span><span class="lang-fr">Répétition</span><span class="lang-en">Repetition</span></span>
+      <span class="rep-num"><span id="rep-cur">0</span>/<span id="rep-tot">5</span></span>
+      <div class="pips" id="pips"></div>
+    </div>
+
+    <!-- Position de départ et Description -->
+    <div class="gesture-info">
+      <div class="info-box">
+        <h4><span class="lang-fr">Position de départ</span><span class="lang-en">Starting position</span></h4>
+        <div id="gesture-start">
+          <span class="lang-fr">En attente de l'examinateur…</span><span class="lang-en">Waiting for the examiner...</span>
+        </div>
+      </div>
+      <div class="info-box">
+        <h4><span class="lang-fr">Description du mouvement</span><span class="lang-en">Movement description</span></h4>
+        <div id="gesture-desc">
+          <span class="lang-fr">En attente de l'examinateur…</span><span class="lang-en">Waiting for the examiner...</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Colonne droite : vidéo -->
+  <div class="video-col">
+    <!-- Vidéo -->
+    <div class="video-wrapper" id="video-wrapper">
+      <div class="countdown-overlay" id="countdown-overlay">
+        <div class="countdown-num" id="countdown-num">3</div>
+        <div class="countdown-label"><span class="lang-fr">Préparez-vous</span><span class="lang-en">Get ready</span></div>
+      </div>
+      <div class="video-countdown-overlay" id="vid-countdown-overlay">
+        <div class="countdown-num" id="vid-countdown-num">3</div>
+        <div class="countdown-label"><span class="lang-fr">Visionnez la vidéo</span><span class="lang-en">Watch the video</span></div>
+      </div>
+      <video id="video-player" playsinline>
+        <source id="video-src" src="" type="video/mp4">
+      </video>
+      <div class="video-idle" id="video-idle"><span class="lang-fr">Vidéo chargée au démarrage</span><span class="lang-en">Video loaded at startup</span></div>
+    </div>
+
+    <!-- Done -->
+    <div class="done-screen" id="done-screen">
+      <h2><span class="lang-fr">✓ Expérience terminée</span><span class="lang-en">✓ Experiment completed</span></h2>
+      <p style="color:var(--muted);font-size:.9rem"><span class="lang-fr">Merci pour votre participation !</span><span class="lang-en">Thank you for your participation!</span></p>
+    </div>
+  </div>
+</main>
+
+<script>
+let lastVideoSrc = '';
+let lastGesture  = '';
+let currentLang  = 'fr';
+
+function toggleLang() {
+  currentLang = currentLang === 'fr' ? 'en' : 'fr';
+  document.body.setAttribute('data-lang', currentLang);
+  fetchState(); // Force UI update for dynamic strings
+}
+
+async function fetchState() {
+  try {
+    const r = await fetch('/api/state');
+    const s = await r.json();
+    updateUI(s);
+  } catch(e) {}
+}
+
+function updateUI(s) {
+  const phase = s.phase;
+  const def   = s.current_gesture_def;
+
+  // Titre
+  const titleEl = document.getElementById('gesture-name');
+  if (s.current_gesture) {
+    titleEl.textContent = s.current_gesture;
+  } else {
+    titleEl.innerHTML = currentLang === 'fr' ? '<span class="lang-fr">En attente</span>' : '<span class="lang-en">Waiting</span>';
+  }
+
+  // Badge
+  const badgesFr = {idle:'Idle', ready:'Prêt', countdown:'Compte à rebours', recording:'Enregistrement ●', done:'Terminé'};
+  const badgesEn = {idle:'Idle', ready:'Ready', countdown:'Countdown', recording:'Recording ●', done:'Done'};
+  const badges = currentLang === 'fr' ? badgesFr : badgesEn;
+  
+  const badge = document.getElementById('phase-badge');
+  badge.textContent = badges[phase] || phase;
+  badge.className = `phase-badge ${phase}`;
+
+  // Description et Start Position
+  const startEl = document.getElementById('gesture-start');
+  const descEl = document.getElementById('gesture-desc');
+  const limbEl = document.getElementById('gesture-limb');
+  
+  // Progress
+  const progEl = document.getElementById('gesture-progress');
+  if (s.total_gestures > 0 && phase !== 'idle') {
+    const isDone = phase === 'done';
+    const curGest = isDone ? s.total_gestures : Math.min(s.current_gesture_idx + 1, s.total_gestures);
+    progEl.innerHTML = currentLang === 'fr' 
+      ? `Geste ${curGest}/${s.total_gestures}` 
+      : `Gesture ${curGest}/${s.total_gestures}`;
+  } else {
+    progEl.innerHTML = '';
+  }
+
+  if (def) {
+    startEl.innerHTML = (currentLang === 'fr' ? def.start_fr : def.start_en) || '<span style="color:var(--muted)">-</span>';
+    descEl.innerHTML = (currentLang === 'fr' ? def.desc_fr : def.desc_en) || def.description || '<span style="color:var(--muted)">-</span>';
+    limbEl.innerHTML = (currentLang === 'fr' ? def.limb_fr : def.limb_en) || '<span style="color:var(--muted)">-</span>';
+  } else if (phase === 'idle') {
+    const waitMsg = currentLang === 'fr' ? 'En attente de l\'examinateur…' : 'Waiting for the examiner...';
+    startEl.innerHTML = `<span style="color:var(--muted)">${waitMsg}</span>`;
+    descEl.innerHTML = `<span style="color:var(--muted)">${waitMsg}</span>`;
+    limbEl.innerHTML = '';
+  }
+
+  // Répétitions pips
+  document.getElementById('rep-cur').textContent = s.current_repetition;
+  document.getElementById('rep-tot').textContent = s.total_repetitions;
+  let pipsHtml = '';
+  for (let i = 0; i < s.total_repetitions; i++) {
+    const cls = i < s.current_repetition ? 'done' :
+                (i === s.current_repetition && phase === 'recording') ? 'active' : '';
+    pipsHtml += `<div class="pip ${cls}"></div>`;
+  }
+  document.getElementById('pips').innerHTML = pipsHtml;
+
+    // Gestion vidéo
+  const vid = document.getElementById('video-player');
+  vid.playbackRate = 0.9; // Ralentit la vidéo à x0.9
+
+  // Gérer la classe "is-playing" pour faire apparaître la vidéo au bon moment
+  if (!vid._hasPlayListeners) {
+    vid.addEventListener('play', () => vid.classList.add('is-playing'));
+    vid.addEventListener('pause', () => vid.classList.remove('is-playing'));
+    vid.addEventListener('ended', () => vid.classList.remove('is-playing'));
+    vid._hasPlayListeners = true;
+  }
+  
+  // Charger la vidéo si le geste change
+  if (def && def.video) {
+    const newSrc = `/static/videos/${def.video}`;
+    if (newSrc !== lastVideoSrc) {
+      lastVideoSrc = newSrc;
+      document.getElementById('video-src').src = newSrc;
+      vid.src = newSrc; // Plus sûr pour la mise à jour dynamique
+      vid.load();
+      document.getElementById('video-idle').style.display = 'none';
+    }
+  }
+
+  // Countdown overlay
+  const countdownOverlay = document.getElementById('countdown-overlay');
+  const countdownNum = document.getElementById('countdown-num');
+  if (phase === 'countdown') {
+    countdownOverlay.classList.add('show');
+    countdownNum.textContent = s.countdown || 3;
+  } else {
+    countdownOverlay.classList.remove('show');
+  }
+
+  // Replay demandé par l'examinateur
+  if (s.replay_requested && !window.isVideoCountingDown) {
+    window.isVideoCountingDown = true;
+    fetch('/api/replay_ack', {method:'POST'});
+    
+    const vidOverlay = document.getElementById('vid-countdown-overlay');
+    const vidNum = document.getElementById('vid-countdown-num');
+    
+    vidOverlay.classList.add('show');
+    let cnt = 3;
+    vidNum.textContent = cnt;
+    
+    const iv = setInterval(() => {
+      cnt--;
+      if (cnt > 0) {
+        vidNum.textContent = cnt;
+      } else {
+        clearInterval(iv);
+        vidOverlay.classList.remove('show');
+        window.isVideoCountingDown = false;
+        vid.currentTime = 0;
+        vid.play().catch(() => {});
+      }
+    }, 1000);
+  }}
+
+fetchState();
+setInterval(fetchState, 600);
+</script>
+</body>
+</html>

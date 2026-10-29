@@ -1,0 +1,2586 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Examinateur - TapStrap</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg:#FFFFFF; --surface:#111420; --panel:#161925; --border:#ECE9E4;
+    --accent:#5C6FC4; --green:#3C7F63; --red:#B24E4A; --warn:#9A6A1C;
+    --text:#2A2926; --muted:#6F6B65;
+    --mono:'DM Sans',monospace; --disp:'Syne',sans-serif;
+  }
+  body { background:var(--bg); color:var(--text); font-family:var(--mono); min-height:100vh; display:grid; grid-template-rows:52px 1fr; }
+
+  header {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 24px; background:var(--surface); border-bottom:1px solid var(--border);
+  }
+  header h1 { font-family:var(--disp); font-size:1rem; font-weight:800; color:var(--accent); }
+  .nav a { color:var(--muted); text-decoration:none; font-size:.72rem; letter-spacing:.08em; margin-left:16px; }
+  .nav a.active, .nav a:hover { color:var(--text); }
+  #scan-header { font-size:.7rem; }
+
+  .layout { display:grid; grid-template-columns:340px 1fr; height:calc(100vh - 52px); overflow:hidden; }
+
+  /* ── SIDEBAR ── */
+  aside { border-right:1px solid var(--border); display:flex; flex-direction:column; overflow-y:auto; }
+  .section { padding:14px 16px; border-bottom:1px solid var(--border); }
+  .slabel { font-size:.6rem; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); margin-bottom:10px; display:block; }
+
+  /* Connect card */
+  .tap-card {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:8px 10px; border-radius:6px; border:1px solid var(--border);
+    background:var(--bg); margin-bottom:6px; font-size:.78rem;
+  }
+  .tap-card.connected { border-color:var(--green); }
+  .tap-label { display:flex; align-items:center; gap:7px; }
+  .dot { width:7px; height:7px; border-radius:50%; background:var(--muted); flex-shrink:0; }
+  .dot.on { background:var(--green); box-shadow:0 0 5px var(--green); }
+  .tap-status { font-size:.65rem; color:var(--muted); }
+  .tap-status.ok { color:var(--green); }
+  .tap-card { flex-wrap:wrap; }
+  .dev-row { display:none; flex-basis:100%; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  .dev-pin { flex:1; min-width:0; background:var(--panel); border:1px solid var(--border); border-radius:4px; color:var(--text); font-family:var(--mono); font-size:.62rem; padding:3px 6px; }
+  .dev-pin:disabled { opacity:.4; }
+  .dev-rm { background:transparent; border:1px solid var(--border); border-radius:4px; color:var(--muted); cursor:pointer; font-size:.7rem; padding:0 7px; }
+  .dev-rm:hover { border-color:var(--red); color:var(--red); }
+  .dev-add { display:none; gap:6px; margin-top:6px; }
+  .dev-add .dev-pin { flex:1; }
+  .dev-warning { display:none; flex-basis:100%; margin-top:5px; font-size:.6rem; line-height:1.4; color:var(--warn); }
+  .connect-btns { display:flex; gap:6px; margin-top:8px; }
+  .lsl-badge {
+    display:none; margin-top:8px; font-size:.6rem; letter-spacing:.08em;
+    padding:3px 9px; border-radius:3px;
+    background:rgba(60,127,99,.1); color:var(--green); border:1px solid var(--green);
+  }
+  .scanning-text { font-size:.65rem; color:var(--muted); margin-top:6px; min-height:14px; }
+  .scanning-text .blink { animation:pulse 1.2s infinite; color:var(--accent); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  /* Participant */
+  .pid-row { display:flex; gap:8px; align-items:center; }
+  input[type=number] {
+    background:var(--bg); border:1px solid var(--border); color:var(--text);
+    font-family:var(--mono); font-size:1.2rem; padding:7px 10px;
+    border-radius:6px; width:72px; text-align:center;
+  }
+  input[type=number]:focus { outline:none; border-color:var(--accent); }
+  .pid-feedback { font-size:.65rem; color:var(--muted); margin-top:6px; }
+
+  /* Status card */
+  .status-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .stat { background:var(--bg); border-radius:5px; padding:8px 10px; font-size:.68rem; color:var(--muted); }
+  .stat strong { display:block; font-family:var(--disp); font-size:1.15rem; font-weight:800; color:var(--text); line-height:1.1; }
+  .stat.accent strong { color:var(--accent); }
+  .stat.green  strong { color:var(--green);  }
+
+  /* ── START / STOP ── */
+  .record-section { padding:14px 16px; border-bottom:1px solid var(--border); }
+  .record-btns { display:flex; gap:8px; }
+  .btn-big {
+    font-family:var(--mono); font-size:.85rem; letter-spacing:.08em; text-transform:uppercase;
+    padding:13px 0; border-radius:7px; border:1px solid; cursor:pointer;
+    transition:all .15s; flex:1; display:flex; align-items:center; justify-content:center; gap:8px;
+  }
+  .btn-big:disabled { opacity:.25; cursor:not-allowed; }
+  .btn-start { background:rgba(60,127,99,.1); border-color:var(--green);  color:var(--green);  }
+  .btn-stop  { background:rgba(178,78,74,.1); border-color:var(--red);    color:var(--red);    }
+  .btn-start:hover:not(:disabled) { background:rgba(60,127,99,.2); }
+  .btn-stop:hover:not(:disabled)  { background:rgba(178,78,74,.2); }
+  .countdown-display {
+    display:none; align-items:center; justify-content:center; gap:10px;
+    padding:10px; border-radius:7px; background:rgba(60,127,99,.07);
+    border:1px solid var(--green); color:var(--green);
+    font-family:var(--disp); font-size:1.4rem; font-weight:800; margin-top:8px;
+  }
+  .countdown-display.show { display:flex; }
+
+  /* Actions examinateur */
+  .action-btns { display:flex; flex-direction:column; gap:7px; }
+  .btn-action {
+    font-family:var(--mono); font-size:.75rem; letter-spacing:.06em; text-transform:uppercase;
+    padding:9px 14px; border-radius:6px; border:1px solid; cursor:pointer;
+    transition:all .15s; display:flex; align-items:center; gap:8px; width:100%;
+  }
+  .btn-action:disabled { opacity:.25; cursor:not-allowed; }
+  .btn-retry  { background:rgba(154,106,28,.08);  border-color:var(--warn);   color:var(--warn);   }
+  .btn-replay { background:rgba(60,127,99,.08);  border-color:var(--green);  color:var(--green);  }
+  .btn-skip   { background:rgba(92,111,196,.08);  border-color:var(--accent); color:var(--accent); }
+  .btn-retry:hover:not(:disabled)  { background:rgba(154,106,28,.18); }
+  .btn-replay:hover:not(:disabled) { background:rgba(60,127,99,.18); }
+  .btn-skip:hover:not(:disabled)   { background:rgba(92,111,196,.18); }
+  .btn-set { background:rgba(92,111,196,.1); border-color:var(--accent); color:var(--accent); }
+  .btn-set:hover:not(:disabled) { background:rgba(92,111,196,.2); }
+  .btn-connect    { background:rgba(92,111,196,.08); border-color:var(--accent); color:var(--accent); }
+  .btn-disconnect { background:rgba(178,78,74,.08); border-color:var(--red);    color:var(--red);    }
+  .btn-connect:hover:not(:disabled)    { background:rgba(92,111,196,.18); }
+  .btn-disconnect:hover:not(:disabled) { background:rgba(178,78,74,.18); }
+
+  /* Gesture list */
+  .g-list-header { padding:10px 16px 4px; }
+  .gesture-list { flex:1; overflow-y:auto; }
+  .g-row {
+    display:grid; grid-template-columns:22px 1fr 80px 52px;
+    align-items:center; padding:8px 16px; gap:8px;
+    border-bottom:1px solid var(--border); font-size:.73rem;
+    transition:background .15s; cursor:default;
+  }
+  .g-row:hover { background:var(--panel); }
+  .g-row.active { background:rgba(92,111,196,.07); border-left:2px solid var(--accent); }
+  .g-row.done   { color:var(--muted); }
+  .g-num { font-size:.6rem; color:var(--muted); }
+  .rep-pips { display:flex; gap:3px; flex-wrap:wrap; }
+  .pip { width:8px; height:8px; border-radius:2px; background:var(--border); }
+  .pip.ok      { background:var(--green); }
+  .pip.retried { background:var(--warn);  }
+  .pip.skipped { background:var(--red);   }
+  .pip.active  { background:var(--accent); animation:pulse 1s infinite; }
+  .g-st { font-size:.6rem; }
+
+  /* ── RIGHT ── */
+  .right { display:flex; flex-direction:column; overflow:hidden; }
+  .tabs { display:flex; border-bottom:1px solid var(--border); background:var(--surface); }
+  .tab {
+    padding:13px 18px; font-size:.7rem; letter-spacing:.08em; text-transform:uppercase;
+    cursor:pointer; color:var(--muted); border-bottom:2px solid transparent;
+    background:none; border-top:none; border-left:none; border-right:none;
+    font-family:var(--mono); transition:all .15s;
+  }
+  .tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+  .tab:hover:not(.active) { color:var(--text); }
+  .tab-content { flex:1; overflow-y:auto; padding:20px; display:none; }
+  .tab-content.active { display:block; }
+
+  /* Plot */
+  .plot-controls { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; align-items:center; }
+  .select {
+    background:var(--panel); border:1px solid var(--border); color:var(--text);
+    font-family:var(--mono); font-size:.73rem; padding:6px 9px; border-radius:5px;
+  }
+  .btn-sm {
+    font-family:var(--mono); font-size:.7rem; padding:6px 13px; border-radius:5px;
+    border:1px solid var(--accent); background:rgba(92,111,196,.1); color:var(--accent);
+    cursor:pointer; letter-spacing:.06em; text-transform:uppercase;
+  }
+  .btn-sm:hover { background:rgba(92,111,196,.2); }
+  .charts-grid {
+    display:grid; gap:10px; margin-bottom:8px;
+  }
+  .charts-grid.mode-finger { grid-template-columns:1fr 1fr 1fr; }
+  .charts-grid.mode-imu    { grid-template-columns:1fr 1fr; }
+  .chart-card {
+    background:var(--panel); border:1px solid var(--border); border-radius:8px;
+    padding:12px; position:relative;
+  }
+  .chart-card-title {
+    font-size:.62rem; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--muted); margin-bottom:8px; display:flex; align-items:center; gap:6px;
+  }
+  .tap-pill { font-size:.58rem; padding:1px 6px; border-radius:3px; }
+  .tap-pill.tap1 { background:rgba(92,111,196,.2); color:#5C6FC4; }
+  .tap-pill.tap2 { background:rgba(60,127,99,.2); color:#3C7F63; }
+  .chart-wrap { height:180px; position:relative; }
+  .chart-empty { display:flex; align-items:center; justify-content:center; height:100%; color:var(--muted); font-size:.75rem; }
+  .mode-btn {
+    font-family:var(--mono); font-size:.72rem; letter-spacing:.08em; text-transform:uppercase;
+    padding:6px 16px; border-radius:5px; border:1px solid var(--border);
+    background:transparent; color:var(--muted); cursor:pointer; transition:all .15s;
+  }
+  .mode-btn.active { border-color:var(--accent); color:var(--accent); background:rgba(92,111,196,.1); }
+
+  /* History */
+  .htable { width:100%; border-collapse:collapse; font-size:.73rem; }
+  .htable th { text-align:left; padding:7px 10px; border-bottom:1px solid var(--border); font-size:.6rem; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); font-weight:400; }
+  .htable td { padding:8px 10px; border-bottom:1px solid var(--border); }
+  .htable tr:hover td { background:var(--panel); }
+  .badge { font-size:.58rem; letter-spacing:.06em; padding:2px 6px; border-radius:3px; text-transform:uppercase; }
+  .badge.ok      { background:rgba(60,127,99,.12); color:var(--green); }
+  .badge.retried { background:rgba(154,106,28,.12);  color:var(--warn);  }
+  .badge.skipped { background:rgba(178,78,74,.12);  color:var(--red);   }
+  .link-plot { color:var(--accent); cursor:pointer; text-decoration:underline; font-size:.68rem; }
+
+
+  /* Dataset / prétraitement */
+  .ds-grid { display:grid; grid-template-columns:minmax(300px,1fr) minmax(300px,1fr); gap:14px; margin-bottom:14px; }
+  .ds-card { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:14px; }
+  .ds-card h3 { font-size:.62rem; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); font-weight:400; margin-bottom:10px; }
+  .ds-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px; font-size:.72rem; }
+  .ds-row label { display:flex; align-items:center; gap:6px; cursor:pointer; }
+  .ds-input { background:var(--bg); border:1px solid var(--border); color:var(--text); font-family:var(--mono); font-size:.75rem; padding:5px 8px; border-radius:5px; width:80px; }
+  .ds-input.wide { width:100%; }
+  .ds-table { width:100%; border-collapse:collapse; font-size:.72rem; }
+  .ds-table th { text-align:left; padding:5px 8px; border-bottom:1px solid var(--border); font-size:.58rem; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); font-weight:400; }
+  .ds-table td { padding:5px 8px; border-bottom:1px solid var(--border); }
+  .ds-table td.num, .ds-table th.num { text-align:right; }
+  .ds-progress { height:8px; background:var(--bg); border-radius:4px; overflow:hidden; border:1px solid var(--border); margin:10px 0 8px; }
+  .ds-progress > div { height:100%; width:0; background:var(--accent); transition:width .3s; }
+  .ds-progress.done > div { background:var(--green); }
+  .ds-counters { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; }
+  .ds-note { font-size:.65rem; color:var(--muted); line-height:1.5; margin-top:8px; }
+  .ds-err { font-size:.66rem; color:var(--red); margin-top:6px; word-break:break-all; }
+  .ds-lock { display:none; font-size:.68rem; color:var(--warn); border:1px solid var(--warn); border-radius:5px; padding:6px 10px; margin-bottom:12px; }
+  .btn-sm.danger { border-color:var(--red); color:var(--red); background:rgba(178,78,74,.08); }
+  .btn-sm:disabled { opacity:.35; cursor:not-allowed; }
+
+
+  /* ── Dataset : sous-navigation, KPI, matrice, visualiseur ── */
+  .ds-subnav { display:flex; gap:8px; margin-bottom:16px; }
+  .ds-sub { font-family:var(--mono); font-size:.76rem; padding:9px 18px; border-radius:8px; cursor:pointer;
+    border:1px solid var(--border); background:var(--panel); color:var(--muted); transition:all .15s; }
+  .ds-sub:hover { color:var(--text); border-color:#E3E0DB; }
+  .ds-sub.active { color:#fff; border-color:var(--accent); background:linear-gradient(135deg,rgba(92,111,196,.35),rgba(122,102,181,.25)); box-shadow:0 0 14px rgba(92,111,196,.18); }
+  .ds-view { display:none; } .ds-view.active { display:block; }
+  .ds-card.c-blue   { border-top:2px solid #5C6FC4; } .ds-card.c-purple { border-top:2px solid #7A66B5; }
+  .ds-card.c-green  { border-top:2px solid #3C7F63; } .ds-card.c-amber  { border-top:2px solid #9A6A1C; }
+  .ds-card.c-teal   { border-top:2px solid #3F8C88; }
+  .ds-empty { padding:50px 20px; text-align:center; color:var(--muted); font-size:.8rem; border:1px dashed var(--border); border-radius:10px; }
+  .chk { display:inline-flex; align-items:center; gap:6px; font-size:.72rem; cursor:pointer; color:var(--text); }
+  .btn-sm.go { border-color:var(--green); color:var(--green); background:rgba(60,127,99,.1); }
+  .btn-sm.ghost { border-color:var(--border); color:var(--text); background:var(--panel); padding:6px 10px; }
+  .pill { font-size:.6rem; padding:1px 8px; border-radius:10px; background:rgba(154,106,28,.15); color:var(--warn); margin-left:6px; }
+
+  .kpi-row { display:grid; grid-template-columns:repeat(6,minmax(120px,1fr)); gap:10px; margin-bottom:14px; }
+  .kpi { border-radius:10px; padding:12px 14px; border:1px solid var(--border); position:relative; overflow:hidden; background:var(--panel); }
+  .kpi::before { content:''; position:absolute; inset:0; opacity:.16; background:var(--kc); }
+  .kpi > * { position:relative; }
+  .kpi-v { font-family:var(--disp); font-weight:800; font-size:1.55rem; line-height:1.05; color:var(--kt); }
+  .kpi-l { font-size:.6rem; letter-spacing:.06em; color:#6F6B65; margin-top:5px; text-transform:uppercase; }
+  .kpi-bar { height:4px; background:rgba(42,41,38,.08); border-radius:2px; margin-top:7px; overflow:hidden; }
+  .kpi-bar > div { height:100%; width:0; background:var(--kt); transition:width .4s; }
+  .k-blue   { --kc:linear-gradient(135deg,#5C6FC4,transparent); --kt:#5C6FC4; }
+  .k-green  { --kc:linear-gradient(135deg,#3C7F63,transparent); --kt:#3C7F63; }
+  .k-teal   { --kc:linear-gradient(135deg,#3F8C88,transparent); --kt:#3F8C88; }
+  .k-red    { --kc:linear-gradient(135deg,#B24E4A,transparent); --kt:#B24E4A; }
+  .k-purple { --kc:linear-gradient(135deg,#7A66B5,transparent); --kt:#7A66B5; }
+  .k-amber  { --kc:linear-gradient(135deg,#9A6A1C,transparent); --kt:#9A6A1C; }
+
+  .ds-toolbar { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+  .legend { margin-left:auto; display:flex; gap:12px; font-size:.65rem; color:var(--muted); }
+  .legend span { display:flex; align-items:center; gap:5px; }
+  .lg { width:11px; height:11px; border-radius:3px; display:inline-block; }
+
+  .matrix-wrap { overflow:auto; max-height:56vh; border:1px solid var(--border); border-radius:10px; background:var(--bg); }
+  .matrix { border-collapse:separate; border-spacing:2px; font-size:.66rem; }
+  .matrix th { position:sticky; top:0; z-index:2; background:var(--surface); color:var(--muted); font-weight:400; padding:6px 0; min-width:26px; text-align:center; font-size:.6rem; }
+  .matrix th.rowh, .matrix td.rowh { position:sticky; left:0; z-index:3; background:var(--surface); text-align:left; padding:4px 10px; white-space:nowrap; min-width:150px; }
+  .matrix th.rowh { z-index:4; }
+  .matrix td.rowh b { color:var(--text); } .matrix td.rowh span { color:var(--muted); font-size:.6rem; margin-left:6px; }
+  .matrix td.mc { height:26px; min-width:26px; text-align:center; border-radius:5px; cursor:pointer; font-weight:500; transition:transform .08s; }
+  .matrix td.mc:hover { transform:scale(1.18); position:relative; z-index:5; }
+  .matrix td.mc.sel { outline:2px solid #fff; outline-offset:1px; }
+  .s-ok      { background:rgba(60,127,99,.24);  color:#3C7F63; } .lg.s-ok      { background:#3C7F63; }
+  .s-partial { background:rgba(154,106,28,.26);  color:#9A6A1C; } .lg.s-partial { background:#C79635; }
+  .s-dup     { background:rgba(122,102,181,.34); color:#7A66B5; } .lg.s-dup     { background:#7A66B5; }
+  .s-broken  { background:rgba(178,78,74,.34);  color:#B24E4A; } .lg.s-broken  { background:#B24E4A; }
+  .s-empty   { background:rgba(42,41,38,.04); color:#E3E0DB; } .lg.s-empty   { background:#E3E0DB; }
+
+  .cell-card { margin-top:14px; border-top:2px solid var(--accent); }
+  .cell-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+  .cell-head h4 { font-family:var(--disp); font-size:1rem; }
+  .chip { font-size:.62rem; padding:3px 9px; border-radius:11px; letter-spacing:.04em; }
+  .chip.red { background:rgba(178,78,74,.16); color:#B24E4A; } .chip.purple { background:rgba(122,102,181,.18); color:#7A66B5; }
+  .chip.green { background:rgba(60,127,99,.14); color:#3C7F63; } .chip.amber { background:rgba(154,106,28,.15); color:#9A6A1C; }
+  .chip.blue { background:rgba(92,111,196,.18); color:#5C6FC4; } .chip.grey { background:rgba(42,41,38,.06); color:#6F6B65; }
+  .ds-table tr.dupe td { background:rgba(122,102,181,.07); }
+  .ds-table tr.bad td { background:rgba(178,78,74,.07); }
+  .ds-table .btn-mini { font-family:var(--mono); font-size:.62rem; padding:3px 9px; border-radius:4px; border:1px solid var(--accent); background:rgba(92,111,196,.1); color:var(--accent); cursor:pointer; }
+  .move-bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:12px; padding-top:12px; border-top:1px solid var(--border); }
+  details.ds-card summary { cursor:pointer; font-size:.74rem; }
+
+  .vw-bar { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:10px 12px; }
+  .seg { display:inline-flex; border:1px solid var(--border); border-radius:6px; overflow:hidden; }
+  .seg button { font-family:var(--mono); font-size:.7rem; padding:6px 14px; background:transparent; color:var(--muted); border:none; cursor:pointer; }
+  .seg button.active { background:rgba(92,111,196,.25); color:#fff; }
+  .seg button[data-src="clean"].active { background:rgba(60,127,99,.22); color:var(--green); }
+  .vw-chips { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; } .vw-chips:empty { display:none; }
+  .vw-sec { margin-bottom:18px; }
+  .vw-sec h4 { font-size:.66rem; letter-spacing:.12em; text-transform:uppercase; margin-bottom:8px; display:flex; gap:8px; align-items:center; }
+  .vw-grid-f { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  .vw-grid-i { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+  .vw-card { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:10px; }
+  .vw-card .t { font-size:.6rem; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin-bottom:6px; }
+  .vw-wrap { height:170px; position:relative; }
+  @media (max-width:1100px){ .kpi-row{grid-template-columns:repeat(3,1fr);} .vw-grid-f{grid-template-columns:1fr 1fr;} }
+
+
+  /* ── Statistiques ── */
+  .st-line { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+  .st-lab { font-size:.6rem; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); }
+  .tgs { display:flex; gap:5px; flex-wrap:wrap; }
+  .tg { font-family:var(--mono); font-size:.68rem; padding:5px 11px; border-radius:14px; cursor:pointer;
+    border:1px solid var(--border); background:var(--bg); color:var(--muted); transition:all .12s; }
+  .tg:hover { color:var(--text); }
+  .tg.on { color:#fff; border-color:#5C6FC4; background:rgba(92,111,196,.28); }
+  .tg.on .ord { background:#5C6FC4; color:#FFFFFF; border-radius:8px; padding:0 5px; margin-right:5px; font-size:.58rem; }
+  .tg.pre { border-style:dashed; }
+  .st-table th.sortable { cursor:pointer; user-select:none; }
+  .st-table th.sortable:hover { color:var(--text); }
+  .st-table th.sorted { color:var(--accent); }
+  .st-table tbody tr { cursor:pointer; }
+  .st-table tbody tr:hover td { background:rgba(92,111,196,.07); }
+  .st-table tbody tr.pick td { background:rgba(92,111,196,.14); }
+  .st-bar { display:inline-block; height:7px; border-radius:3px; vertical-align:middle; margin-right:8px; min-width:2px; }
+  .st-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; }
+  .heat { border-collapse:separate; border-spacing:2px; font-size:.64rem; }
+  .heat th { color:var(--muted); font-weight:400; padding:4px 6px; font-size:.6rem; position:sticky; top:0; background:var(--panel); }
+  .heat th.rh { left:0; z-index:2; text-align:left; }
+  .heat td.hc { min-width:44px; height:28px; text-align:center; border-radius:5px; cursor:pointer; color:#FFFFFF; font-weight:500; }
+  .heat td.hc:hover { outline:2px solid #fff; }
+  .heat td.hc.pick { outline:2px solid #fff; }
+  .heat td.hc.none { background:rgba(42,41,38,.04); color:#E3E0DB; cursor:default; }
+  .heat td.rh { position:sticky; left:0; background:var(--panel); color:var(--text); padding:2px 8px; white-space:nowrap; }
+  .scale { display:flex; align-items:center; gap:8px; font-size:.62rem; color:var(--muted); margin-top:10px; }
+  .scale i { display:block; width:160px; height:8px; border-radius:4px; }
+
+
+  /* ── Audit d'intégrité ── */
+  .matrix td.mc { position:relative; }
+  .matrix td.mc.ae::after, .matrix td.mc.aw::after { content:''; position:absolute; top:2px; right:2px; width:7px; height:7px; border-radius:50%; box-shadow:0 0 0 1px #FFFFFF; }
+  .matrix td.mc.ae::after { background:#B24E4A; } .matrix td.mc.aw:not(.ae)::after { background:#9A6A1C; }
+  /* une case complète mais dont l'audit trouve des problèmes ne reste plus « tout vert » : contour rouge (erreur) ou jaune (avertissement) */
+  .matrix td.mc.s-ok.ae { box-shadow:inset 0 0 0 2px #B24E4A; } .matrix td.mc.s-ok.aw:not(.ae) { box-shadow:inset 0 0 0 2px #9A6A1C; }
+  .lg-dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+  .au-tiles { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:12px 0; }
+  .au-tile { border-radius:10px; padding:12px 14px; border:1px solid var(--border); background:var(--bg); border-left:4px solid var(--tc); }
+  .au-tile .big { font-family:var(--disp); font-weight:800; font-size:1.5rem; color:var(--tc); line-height:1.1; }
+  .au-tile .lbl { font-size:.62rem; letter-spacing:.08em; text-transform:uppercase; color:#6F6B65; margin-top:4px; }
+  .au-tile .sub { font-size:.64rem; color:var(--muted); margin-top:3px; }
+  .au-tile.t-ok { --tc:#3C7F63; } .au-tile.t-warn { --tc:#9A6A1C; } .au-tile.t-err { --tc:#B24E4A; } .au-tile.t-none { --tc:#E3E0DB; }
+  #au-codes tbody tr { cursor:pointer; } #au-codes tbody tr:hover td { background:rgba(92,111,196,.07); }
+  .prob { font-size:.68rem; padding:5px 0; border-bottom:1px dashed var(--border); display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; }
+  .prob b { min-width:84px; }
+  .chip.mk { background:rgba(122,102,181,.18); color:#7A66B5; }
+  .chip.fg { background:rgba(92,111,196,.18); color:#5C6FC4; }
+  .chip.im { background:rgba(63,140,136,.16); color:#3F8C88; }
+  .chip.cr { background:rgba(154,106,28,.15); color:#9A6A1C; }
+  .sel-bar { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; align-items:center; }
+  .sel-bar .st-lab { margin-right:4px; }
+  .ds-table td .chip { white-space:nowrap; }
+  @media (max-width:1100px){ .au-tiles{grid-template-columns:1fr 1fr;} }
+
+  /* Log */
+  .log-list { display:flex; flex-direction:column; gap:4px; }
+  .log-item { font-size:.7rem; padding:5px 9px; border-radius:4px; background:var(--panel); color:var(--muted); line-height:1.4; }
+
+  /* Toast */
+  .toast { position:fixed; bottom:20px; right:20px; background:var(--panel); border:1px solid var(--border); border-radius:7px; padding:9px 15px; font-size:.76rem; opacity:0; pointer-events:none; transition:opacity .3s; z-index:99; }
+  .toast.show { opacity:1; }
+  .toast.ok  { border-color:var(--green); color:var(--green); }
+  .toast.err { border-color:var(--red);   color:var(--red);   }
+
+  .st-adv { margin-top:14px; } .st-adv > summary { cursor:pointer; font-size:.75rem; color:var(--accent); padding:8px 0; }
+  .sx-banner { border-radius:8px; padding:14px 16px; margin-bottom:12px; font-size:.85rem; border:1px solid var(--border); background:var(--panel); }
+  .sx-banner.ok { border-color:var(--green); } .sx-banner.mid { border-color:var(--warn); } .sx-banner.bad { border-color:var(--red); }
+  .sx-banner b { font-size:1rem; } .sx-banner small { display:block; color:var(--muted); margin-top:4px; font-size:.68rem; }
+  .sx-card { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:14px 16px; margin-bottom:12px; }
+  .sx-card h4 { font-size:.9rem; margin-bottom:10px; } .sx-card h4 span { color:var(--muted); font-weight:400; font-size:.68rem; margin-left:8px; }
+  .sx-row { display:grid; grid-template-columns:22px 1fr; gap:4px 10px; padding:8px 0; border-top:1px solid var(--border); }
+  .sx-dot { width:12px; height:12px; border-radius:50%; margin-top:3px; background:var(--muted); }
+  .sx-dot.ok { background:var(--green); } .sx-dot.mid { background:var(--warn); } .sx-dot.bad { background:var(--red); }
+  .sx-q { font-size:.78rem; } .sx-v { font-size:.78rem; color:var(--text); font-weight:700; margin-top:2px; }
+  .sx-e { font-size:.66rem; color:var(--muted); margin-top:2px; line-height:1.4; }
+  .sx-foot { font-size:.66rem; color:var(--muted); line-height:1.5; margin-bottom:6px; }
+  .sx-head { display:flex; gap:10px; align-items:center; font-size:.72rem; color:var(--muted); margin-bottom:10px; } .sx-head span { margin-right:auto; }
+  .sx-strip { width:100%; max-width:600px; display:block; margin-top:10px; }
+  .au-tile { cursor:pointer; } .au-tile:hover { filter:brightness(1.15); }
+  details.prob-grp, details.vw-iss { background:var(--panel); border:1px solid var(--border); border-radius:6px; padding:8px 12px; margin-bottom:6px; font-size:.75rem; }
+  details.prob-sub { margin:6px 0 0 14px; } details summary { cursor:pointer; }
+  details.prob-grp .prob, details.vw-iss .prob { margin:4px 0 0 14px; color:var(--muted); font-size:.7rem; }
+
+  /* ── Dataset readability ── */
+  :root { --muted:#6F6B65; }
+  #tab-dataset { padding:24px 30px; font-size:.84rem; }
+  #tab-dataset .ds-note { font-size:.76rem; line-height:1.55; }
+  #tab-dataset .ds-card { padding:16px 18px; }
+  #tab-dataset .ds-card h3 { font-size:.72rem; color:#6F6B65; }
+  #tab-dataset .ds-table { font-size:.8rem; }
+  #tab-dataset .ds-table th { font-size:.66rem; }
+  #tab-dataset .ds-table td, #tab-dataset .ds-table th { padding:7px 10px; }
+  #tab-dataset .kpi-l { font-size:.7rem; }
+  #tab-dataset .chip { font-size:.72rem; padding:3px 10px; }
+  #tab-dataset .legend { font-size:.74rem; }
+  #tab-dataset .matrix { font-size:.74rem; }
+  #tab-dataset .matrix th { font-size:.68rem; }
+  #tab-dataset .matrix td.rowh span { font-size:.68rem; }
+  #tab-dataset .btn-sm { font-size:.74rem; }
+  #tab-dataset .btn-mini { font-size:.7rem; }
+  #tab-dataset .st-lab { font-size:.68rem; }
+  #tab-dataset .tg { font-size:.74rem; }
+  #tab-dataset .prob { font-size:.76rem; }
+  #tab-dataset .chk { font-size:.78rem; }
+  #tab-dataset .select, #tab-dataset .ds-input { font-size:.8rem; }
+  .kpi-row { grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); }
+  .kpi[data-kf] { cursor:pointer; } .kpi[data-kf]:hover { border-color:#E3E0DB; } .kpi.on { outline:2px solid var(--accent); }
+  .ov-split { display:grid; grid-template-columns:minmax(0,1fr); gap:14px; align-items:start; }
+  .ov-split.has-cell { grid-template-columns:minmax(0,1fr) minmax(480px,44%); }
+  .ov-split .cell-card { margin-top:0; position:sticky; top:0; max-height:72vh; overflow:auto; }
+  .ov-split:not(.has-cell) .matrix-wrap { max-height:62vh; }
+  @media (max-width:1400px) { .ov-split.has-cell { grid-template-columns:minmax(0,1fr); } .ov-split .cell-card { position:static; max-height:none; } }
+  .tl { font-size:.62rem; color:var(--muted); margin:0 3px 0 6px; }
+  .pill.err { background:rgba(178,78,74,.2); color:#B24E4A; }
+
+  /* ── JEUX DE GESTES ── */
+  .gs-wrap { display:grid; grid-template-columns:300px 1fr; gap:16px; align-items:start; }
+  @media (max-width:1100px) { .gs-wrap { grid-template-columns:1fr; } }
+  .gs-set { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:10px; }
+  .gs-set.active { border-color:var(--green); }
+  .gs-set .t { font-family:var(--disp); font-weight:600; font-size:.85rem; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .gs-set .m { font-size:.66rem; color:var(--muted); margin:4px 0 8px; }
+  .gs-badge { font-size:.58rem; padding:1px 7px; border-radius:10px; background:rgba(60,127,99,.15); color:var(--green); font-family:var(--mono); font-weight:400; }
+  .gs-badge.g { background:rgba(154,106,28,.15); color:var(--warn); }
+  .gs-btns { display:flex; gap:6px; flex-wrap:wrap; }
+  .gs-b { font:inherit; font-size:.68rem; padding:5px 10px; border-radius:5px; border:1px solid var(--border); background:var(--surface); color:var(--text); cursor:pointer; }
+  .gs-b:hover:not(:disabled) { border-color:var(--accent); }
+  .gs-b.pri { border-color:var(--green); color:var(--green); background:rgba(60,127,99,.08); }
+  .gs-b.dng:hover:not(:disabled) { border-color:var(--red); color:var(--red); }
+  .gs-b:disabled { opacity:.3; cursor:not-allowed; }
+  .gs-f { display:flex; flex-direction:column; gap:4px; font-size:.64rem; color:var(--muted); }
+  .gs-f input[type=text], .gs-f input[type=number], .gs-f textarea { font:inherit; font-size:.74rem; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:5px; padding:6px 8px; width:100%; }
+  .gs-f textarea { resize:vertical; min-height:34px; }
+  .gs-f input:focus, .gs-f textarea:focus { outline:none; border-color:var(--accent); }
+  .gs-head { display:grid; grid-template-columns:1fr 110px; gap:12px; margin-bottom:14px; }
+  .gs-g { border:1px solid var(--border); border-radius:7px; padding:10px; margin-bottom:8px; background:var(--surface); }
+  .gs-g .top { display:grid; grid-template-columns:34px 1fr 1fr 30px; gap:10px; align-items:end; }
+  .gs-g .num { font-family:var(--disp); font-weight:800; color:var(--accent); align-self:center; font-size:.9rem; }
+  .gs-g .more { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:8px; }
+  .gs-g details summary { font-size:.64rem; color:var(--muted); cursor:pointer; margin-top:8px; }
+  .gs-x { background:none; border:none; color:var(--muted); cursor:pointer; font-size:1rem; align-self:center; }
+  .gs-x:hover:not(:disabled) { color:var(--red); } .gs-x:disabled { opacity:.2; cursor:not-allowed; }
+  .gs-vid { display:flex; gap:6px; align-items:center; font-size:.66rem; color:var(--muted); margin-top:8px; }
+  .gs-note { font-size:.68rem; color:var(--muted); line-height:1.55; background:var(--surface); border:1px solid var(--border); border-radius:7px; padding:10px 12px; margin-bottom:12px; }
+  #gs-chip { font-size:.66rem; color:var(--green); border:1px solid var(--border); border-radius:10px; padding:1px 9px; margin-left:4px; cursor:pointer; }
+
+  /* ── Une même page, 3 vues : /examiner, /sets, /dataset (classe posée sur body d'après l'URL) ── */
+  body.pg-sets .layout, body.pg-dataset .layout { grid-template-columns:1fr; }
+  body.pg-sets aside, body.pg-dataset aside, body.pg-sets .tabs, body.pg-dataset .tabs { display:none; }
+  body.pg-exam .tab[data-tab="dataset"], body.pg-exam .tab[data-tab="sets"] { display:none; }
+  body.pg-sets #scan-header, body.pg-dataset #scan-header { visibility:hidden; }
+  .view-bar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:0 0 12px; }
+  .matrix td.mc.selmark { outline:2px dashed #3C7F63; outline-offset:-2px; }
+
+/* ═══════════════════════════════════════════════════════════════
+   B · Soft Modern — thème visuel
+   Aucun changement de structure, de comportement ni de contenu :
+   uniquement couleurs, typographie, bordures, arrondis et ombres.
+   ═══════════════════════════════════════════════════════════════ */
+:root{
+  --bg:#F3F2F0; --surface:#F8F7F5; --panel:#FFFFFF; --raised:#F7F6F3; --border:#E3E0DB;
+  --accent:#5C6FC4; --accent2:#B24E4A; --green:#3C7F63; --red:#B24E4A; --warn:#9A6A1C;
+  --text:#2A2926; --soft:#55524C; --muted:#6F6B65;
+  --acs:#ECEEF8; --rule:#ECE9E4; --card:#FFFFFF; --hd:#FBFAF9; --inp:#FBFAF9;
+  --body:'DM Sans',system-ui,sans-serif; --mono:'DM Sans',system-ui,sans-serif; --disp:'DM Sans',system-ui,sans-serif; --sans:'DM Sans',system-ui,sans-serif;
+}
+html,body{background:var(--bg);color:var(--text)}
+body{font-variant-numeric:lining-nums}
+table,.num,.stat strong,.kpi-v,.tile b,input[type=number]{font-variant-numeric:lining-nums tabular-nums}
+*,*::before,*::after{text-shadow:none !important;backdrop-filter:none !important;-webkit-backdrop-filter:none !important}
+*{box-shadow:none !important}
+::selection{background:#ECEEF8;color:var(--text)}
+:focus-visible{outline:2px solid var(--accent) !important;outline-offset:2px}
+
+/* — arrondis, mesurés — */
+.chart-card,.info-box,.gs-set,.ds-card,.vw-card,.vw-bar,.sx-card,.sx-banner,.card,#status,.gs-g,.kpi,.tile,.au-tile,.steps li,.arch,.pop,dialog,.note,.gs-note,.matrix-wrap,.cm-wrap,.ds-empty,details.prob-grp,details.vw-iss,#side,.toast,#tipbox,.log-item{border-radius:12px !important}
+.btn-action,.btn-sm,.btn-big,.gs-b,.btn-mini,.ds-sub,.btn,.seg,.seg button,.mode-btn,input,select,textarea,.select,.ds-input,.stat,.tap-card,.lsl-badge,.phase-badge,.tabs,.tabs button,.countdown-display,.lang-btn,.ds-progress,.prog,.kpi-bar{border-radius:8px !important}
+.tg,.chip,.badge,.pill,#gs-chip,.gs-badge,.tap-pill{border-radius:999px !important}
+.pip,.pp i,.pips i{border-radius:2px !important}
+.dot,.info,.steps .n,.switch input::after,.sx-dot,.st-dot,.lg-dot,.matrix td.mc.ae::after,.matrix td.mc.aw::after{border-radius:50% !important}
+.switch input{border-radius:10px !important}
+.matrix td.mc{border-radius:4px !important}
+
+/* — en-tête — */
+header{background:var(--hd) !important;border-bottom:1px solid #E3E0DB !important}
+.subbar{background:var(--hd) !important;border-bottom:1px solid var(--border) !important}
+header h1{color:var(--accent) !important;font-weight:700 !important}
+.nav a{color:var(--muted)}
+.nav a.active,.nav a:hover{color:var(--text) !important}
+.nav a.active{border-bottom-color:var(--accent) !important;font-weight:600}
+.lang-btn{border-color:var(--border);background:var(--card);color:var(--text)}
+#gs-chip{background:var(--card) !important}
+
+/* — barre latérale — */
+aside{background:var(--surface);border-right:1px solid var(--border)}
+.tap-card{background:var(--card);border-color:var(--border);box-shadow:0 1px 2px rgba(60,50,40,.06) !important}
+.dot.on{background:var(--green)}
+.lsl-badge{border-color:var(--green)}
+.stat{background:var(--raised) !important;border:1px solid var(--rule)}
+.stat strong,.kpi-v,.tile b,.rep-num,.countdown-num,.gesture-title,.done-screen h2,.au-tile .big,.arch b,.gs-g .num{font-family:var(--disp);font-weight:700 !important}
+.gesture-limb{font-family:var(--disp)}
+.stat strong{font-size:1.1rem}
+
+/* — libellés — */
+.slabel,.cap,.chart-card-title,.ds-card h3,.vw-card .t,.vw-sec h4,.st-lab,.kpi-l,.au-tile .lbl,.gesture-progress,.info-box h4,.htable th,.ds-table th,table.t th,.tab,.countdown-label{letter-spacing:.06em}
+
+/* — boutons : teintes sémantiques conservées, Start plein — */
+.btn-action,.btn-sm,.btn-big,.gs-b,.btn-mini,.ds-sub,.btn{font-weight:600;box-shadow:0 1px 2px rgba(60,50,40,.06) !important}
+.btn-start,.btn-start:hover:not(:disabled){background:var(--green) !important;border-color:var(--green) !important;color:#fff !important}
+.btn-stop{background:#fff !important}
+.btn-retry{background:var(--card);} .btn-replay{background:var(--card)} .btn-skip,.btn-set,.btn-connect{background:var(--card)} .btn-disconnect{background:var(--card)}
+.btn-sm,.btn-mini,.ds-table .btn-mini{background:var(--card)}
+.btn.primary,.btn.cta{background:var(--accent) !important;border-color:var(--accent) !important;color:#fff !important}
+.btn.cta2{background:var(--card);border-color:var(--accent);color:var(--accent)}
+.btn.cta2:hover{background:var(--acs);color:var(--accent)}
+.btn.danger.solid{background:var(--red) !important;color:#fff !important}
+.btn.danger{background:var(--card)}
+.btn-sm.ghost,.gs-b{background:var(--card)}
+.ds-sub{background:var(--card);color:var(--muted);border-color:var(--border)}
+.ds-sub.active{background:var(--accent) !important;color:#fff !important;border-color:var(--accent) !important}
+.seg{background:var(--card);border-color:var(--border)}
+.seg button.active,.seg button[aria-pressed=true]{background:var(--acs) !important;color:var(--accent) !important;font-weight:600}
+.seg button[data-src="clean"].active{background:rgba(60,127,99,.14) !important;color:var(--green) !important}
+.tg{background:var(--card);color:var(--soft);border-color:var(--border)}
+.tg.on,.tg[aria-pressed=true]{background:var(--acs) !important;color:var(--accent) !important;border-color:var(--accent) !important}
+.tg.on .ord{background:var(--accent);color:#fff}
+.switch input:checked{background:var(--accent)}
+.btn:disabled,.btn-action:disabled,.btn-big:disabled,.btn-sm:disabled{opacity:.4}
+.lnk,.link-plot{color:var(--accent)}
+
+/* — champs — */
+input,select,textarea,.select,.ds-input,.gs-f input,.gs-f textarea,.pid-row input,input[type=number]{background:#FBFAF9 !important;color:var(--text);border:1px solid var(--border)}
+#pid-input{border-color:var(--border) !important}
+input:focus,select:focus,textarea:focus{border-color:var(--accent) !important}
+
+/* — onglets, listes, tableaux — */
+.tabs{background:var(--surface);border-color:var(--border)}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+.tabs button[aria-selected=true]{background:var(--card);color:var(--text)}
+.ptabs button[aria-selected=true]{border-color:var(--accent)}
+.g-row{border-bottom-color:var(--rule)}.g-row:hover{background:var(--raised)}
+.g-row.active{background:var(--acs);border-left:3px solid var(--accent)}
+.pip{background:#E3E0DB}.pip.ok{background:var(--green)}.pip.retried{background:#9A6A1C}.pip.skipped{background:var(--red)}.pip.active{background:var(--accent)}.pip.done{background:var(--accent)}
+.htable th,.ds-table th,table.t th,.matrix th,.heat th{border-bottom:1px solid var(--border);background:var(--surface);color:var(--muted)}
+.htable td,.ds-table td,table.t td{border-bottom-color:var(--rule)}
+.htable tr:hover td,.ds-table tbody tr:hover td,.st-table tbody tr:hover td,table.t tbody tr[data-m]:hover td{background:var(--raised)}
+table.t tr.sel td,.st-table tbody tr.pick td{background:var(--acs)}table.t tr.sel .rowbtn{color:var(--text);font-weight:600}
+
+/* — cartes — */
+.chart-card,.info-box,.gs-set,.ds-card,.vw-card,.vw-bar,.sx-card,.sx-banner,.card,#status,.gs-g,.kpi,.tile,.au-tile,.steps li,.arch,.pop,.note,.gs-note,.matrix-wrap,.cm-wrap{background:var(--card) !important;border-color:var(--border) !important}
+.chart-card,.info-box,.gs-set,.ds-card,.card,#status{box-shadow:0 1px 2px rgba(60,50,40,.06) !important}
+.gs-g{background:var(--raised) !important}
+.gs-set.active{border-color:var(--green) !important}
+.info-box h4,.gs-g .num{color:var(--accent)}
+.ds-card.c-blue{border-top:2px solid #5C6FC4 !important}.ds-card.c-purple{border-top:2px solid #7A66B5 !important}.ds-card.c-green{border-top:2px solid #3C7F63 !important}.ds-card.c-amber{border-top:2px solid #9A6A1C !important}.ds-card.c-teal{border-top:2px solid #3F8C88 !important}
+.cell-card{border-top:2px solid var(--accent) !important}
+dialog{background:var(--card) !important;border:1px solid var(--border)}dialog::backdrop{background:rgba(40,35,30,.35)}
+#tipbox{background:var(--card) !important;color:var(--text);border-color:var(--border) !important}
+.pop{border-color:var(--accent) !important}
+
+/* — indicateurs — */
+.kpi::before{display:none}
+.kpi{border-top:3px solid var(--kt) !important}
+.kpi-bar{background:rgba(40,35,30,.08)}
+.au-tile{border-left:4px solid var(--tc) !important}
+.au-tile:hover{filter:none;background:var(--raised) !important}
+.tile{border-left:4px solid var(--tc,#5C6FC4) !important}
+.kpi-l{color:var(--muted)}
+
+/* — matrices — */
+.matrix th.rowh,.matrix td.rowh,.heat td.rh{background:var(--surface)}
+.matrix td.mc.sel,.heat td.hc:hover,.heat td.hc.pick{outline-color:var(--text)}
+.s-empty{background:rgba(40,35,30,.05);color:#E3E0DB}
+.matrix td.mc.ae::after,.matrix td.mc.aw::after{box-shadow:0 0 0 1px #fff !important}
+
+/* — superpositions — */
+.countdown-overlay,.video-countdown-overlay{background:rgba(251,250,247,.95) !important}
+.countdown-num{color:var(--accent)}
+.toast{background:var(--card);border-color:var(--border);color:var(--text);box-shadow:0 1px 2px rgba(60,50,40,.06) !important}.toast.ok{border-color:var(--green);color:var(--green)}.toast.err{border-color:var(--red);color:var(--red)}
+.log-item{background:var(--raised);color:var(--soft)}
+.prob{border-bottom-color:var(--rule)}
+.phase-badge.idle{background:var(--raised);color:var(--muted);border:1px solid var(--border)}
+
+/* — classifieur — */
+#side{background:var(--card);border-color:var(--border) !important}
+.runbar{background:var(--surface);border-top-color:var(--border)}
+.arch[aria-pressed=true]{border-color:var(--accent) !important;background:var(--acs) !important}
+.prog,.ds-progress{background:var(--raised);border-color:var(--border)}
+.prog > div,.ds-progress > div{background:var(--accent)}
+
+/* — Soft Modern : surfaces douces, ombres très légères — */
+.chart-card,.info-box,.gs-set,.ds-card,.card,#status,.tap-card,.stat{box-shadow:0 1px 2px rgba(60,50,40,.06) !important}
+.stat{box-shadow:none !important}
+.g-row.active{border-left-width:3px}
+
+/* language switch: same look on every page, always at the far right of the header */
+.lang-sw,header .lang-btn{background:#E7EAF7 !important;color:#2A2926 !important;border:0 !important;border-radius:6px !important;padding:6px 10px !important;font:inherit !important;font-size:.78rem !important;letter-spacing:.04em !important;cursor:pointer;text-decoration:none !important;white-space:nowrap;line-height:1.2}
+.lang-sw:hover,header .lang-btn:hover{background:#DCE1F4 !important}
+header .lang-btn{margin-left:auto !important}
+#gs-editor > .gs-btns{position:sticky;bottom:0;background:var(--card);padding:10px 0;border-top:1px solid var(--rule);z-index:3}
+.gs-g input:disabled,.gs-g textarea:disabled{background:var(--raised) !important;color:var(--muted);border-style:dashed !important;cursor:not-allowed}
+</style>
+</head>
+<body>
+<script>
+(function () {   // quelle page ? classe sur <body>, lien actif dans la barre, onglet à ouvrir
+  var p = location.pathname.replace(/\/+$/, ''), pg = p === '/sets' ? 'sets' : p === '/dataset' ? 'dataset' : 'exam';
+  document.documentElement.setAttribute('data-pg', pg);
+  document.addEventListener('DOMContentLoaded', function () {
+    document.body.classList.add('pg-' + pg);
+    var map = {sets:'/sets', dataset:'/dataset', exam:'/examiner'};
+    document.querySelectorAll('#main-nav a').forEach(function (a) { if (a.getAttribute('href') === map[pg]) a.classList.add('active'); });
+    if (pg !== 'exam') document.getElementById('pg-title').textContent = pg === 'sets' ? 'Jeux de gestes' : 'Données';
+    if (pg !== 'exam') document.title = (pg === 'sets' ? 'Jeux de gestes' : 'Données') + ' - TapStrap';
+    window.addEventListener('load', function () { if (pg !== 'exam') { var t = document.querySelector('[data-tab="' + pg + '"]'); if (t) t.click(); } });
+  });
+})();
+</script>
+
+
+<header>
+  <div style="display:flex;align-items:center;gap:20px">
+    <h1 id="pg-title">Examinateur</h1><a id="gs-chip" href="/sets" title="Changer de jeu de données" style="display:none;text-decoration:none"></a>
+    <nav class="nav" id="main-nav"><a href="/">Participant</a><a href="/sets">Jeux de gestes</a><a href="/examiner">Examinateur</a><a href="/dataset">Données</a><a href="/classifier">Classifieur</a>
+    </nav>
+  </div>
+  <div style="display:flex;align-items:center;gap:16px"><div id="scan-header" style="color:var(--muted)">Capteurs non connectés</div><button type="button" class="lang-sw" onclick="location.href='/en'+location.pathname" aria-label="Language">EN / FR</button></div>
+</header>
+
+<div class="layout">
+
+<!-- ── SIDEBAR ── -->
+<aside>
+
+  <!-- Capteurs -->
+  <div class="section">
+    <span class="slabel">Capteurs Tap</span>
+    <div id="device-cards"></div>
+    <div class="dev-warning" id="untested-banner"></div>
+    <div class="dev-add" id="dev-add"><button class="btn-sm" id="btn-add-dev" style="width:100%">+ Ajouter un emplacement</button></div>
+    <div class="connect-btns">
+      <button class="btn-action btn-connect" id="btn-connect" style="flex:1;justify-content:center">🔵 Connecter</button>
+      <button class="btn-action btn-disconnect" id="btn-disconnect" style="flex:1;justify-content:center" disabled>⚫ Réinitialiser</button>
+    </div>
+    <div class="scanning-text" id="scan-text"></div>
+    <div class="lsl-badge" id="lsl-badge">◉ LSL ACTIF, streams visibles dans LabRecorder</div>
+  </div>
+
+  <!-- Participant + Session -->
+  <div class="section">
+    <span class="slabel">Participant</span>
+    <div class="pid-row">
+      <input type="text" id="pid-input" value="" placeholder="ex: 1 ou test" style="width: 100%; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; padding-left: 10px;"/>
+      <button class="btn-action btn-set" id="btn-set-pid" style="flex:1;justify-content:center">Définir</button>
+    </div>
+    <div class="pid-feedback" id="pid-feedback">-</div>
+    <div style="margin-top:10px">
+      <span class="slabel" style="margin-bottom:6px;display:block">Session</span>
+      <div class="pid-row">
+        <input type="number" id="session-input" value="1" min="1" max="99"/>
+        <button class="btn-action btn-set" id="btn-set-session" style="flex:1;justify-content:center">Définir</button>
+      </div>
+      <div class="pid-feedback" id="session-feedback">-</div>
+    </div>
+    <div style="margin-top:10px">
+      <span class="slabel" style="margin-bottom:6px;display:block">Forcer Répétition (1-5)</span>
+      <div class="pid-row">
+        <input type="number" id="rep-input" value="1" min="1" max="5"/>
+        <button class="btn-action btn-set" id="btn-set-rep" style="flex:1;justify-content:center">Aller à</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- État -->
+  <div class="section">
+    <span class="slabel">État en cours (<span id="st-progress">0/0</span>)</span>
+    <div class="status-grid">
+      <div class="stat accent"><strong id="st-gesture">-</strong>Geste</div>
+      <div class="stat"><strong id="st-phase">-</strong>Phase</div>
+      <div class="stat green"><strong id="st-rep">-</strong>Répétition</div>
+      <div class="stat"><strong id="st-session">-</strong>Session</div>
+      <div class="stat"><strong id="st-elapsed">-</strong>Durée</div>
+    </div>
+    <div class="status-grid" style="margin-top:8px">
+      <div class="stat"><strong id="st-finger-hz" style="font-size:.9rem">-</strong>Doigts Hz</div>
+      <div class="stat"><strong id="st-imu-hz" style="font-size:.9rem">-</strong>IMU Hz</div>
+      <div class="stat"><strong id="st-finger-n">-</strong>N doigts</div>
+      <div class="stat"><strong id="st-imu-n">-</strong>N IMU</div>
+    </div>
+  </div>
+
+  <!-- START / STOP -->
+  <div class="record-section">
+    <span class="slabel">Enregistrement</span>
+    <div class="record-btns">
+      <button class="btn-big btn-start" id="btn-start" disabled>▶ Démarrer</button>
+      <button class="btn-big btn-stop"  id="btn-stop"  disabled>■ Arrêter</button>
+    </div>
+    <div class="pid-feedback" id="rec-hint"></div>
+    <div class="countdown-display" id="countdown-display">
+      <span>⏱</span><span id="countdown-val">3</span>
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="section">
+    <span class="slabel">Actions</span>
+    <div class="pid-feedback" id="act-hint" style="margin:0 0 8px"></div>
+    <div class="action-btns">
+      <button class="btn-action btn-retry"  id="btn-retry"  disabled>↩ Recommencer cette répétition</button>
+      <button class="btn-action btn-replay" id="btn-replay" disabled>↺ Rejouer la vidéo au participant</button>
+      <button class="btn-action btn-skip"   id="btn-skip"   disabled>⏭ Passer au geste suivant</button>
+    </div>
+  </div>
+
+  <!-- Gesture list -->
+  <div class="g-list-header">
+    <span class="slabel" style="margin:0">Ordre des gestes</span>
+  </div>
+  <div class="gesture-list" id="gesture-list"></div>
+
+</aside>
+
+<!-- ── RIGHT PANEL ── -->
+<div class="right">
+  <div class="tabs">
+    <button class="tab active" data-tab="plot">Graphique</button>
+    <button class="tab" data-tab="history">Historique</button>
+    <button class="tab" data-tab="dataset">Données</button>
+    <button class="tab" data-tab="sets">Jeux de gestes</button>
+    <button class="tab" data-tab="logpanel">Journal</button>
+  </div>
+
+  <!-- PLOT -->
+  <div class="tab-content active" id="tab-plot">
+    <!-- Contrôles -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <button class="btn-sm" id="btn-load-plot">Charger</button>
+      <span id="plot-filename" style="font-size:.65rem;color:var(--muted)"></span>
+    </div>
+
+    <!-- Un bloc par appareil du registre, construit par buildPlotLayout() -->
+    <div id="plot-devices"></div>
+
+    <div style="font-size:.63rem;color:var(--muted);margin-top:8px">Doigts : un graphique par doigt, XYZ superposés. IMU : Accel XYZ + Gyro XYZ, par appareil. Max 2 000 pts.</div>
+  </div>
+
+  <!-- HISTORY -->
+  <div class="tab-content" id="tab-history">
+    <table class="htable">
+      <thead><tr><th>#</th><th>Geste</th><th>Rép.</th><th>Heure</th><th>Doigts</th><th>IMU</th><th>Statut</th><th>Plot</th></tr></thead>
+      <tbody id="history-tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- DATASET -->
+  <div class="tab-content" id="tab-dataset">
+    <div class="ds-lock" id="ds-lock">⏱ Un essai est en cours : déplacements et prétraitement sont bloqués pour ne pas perturber la réception Bluetooth.</div>
+
+    <div class="view-bar"><span class="st-lab">Dataset affiché</span> <select class="select" id="view-sel"></select> <span class="ds-note" id="view-note" style="margin:0"></span></div>
+
+    <div class="ds-subnav">
+      <button class="ds-sub active" data-sub="overview">Vue d'ensemble</button>
+      <button class="ds-sub" data-sub="audit">Audit <span class="pill err" id="au-badge" style="display:none">0</span></button>
+      <button class="ds-sub" data-sub="viewer">Répétition</button>
+      <button class="ds-sub" data-sub="stats">Statistiques</button>
+      <button class="ds-sub" data-sub="preproc">Prétraitement</button>
+    </div>
+
+    <!-- ═══ VUE D'ENSEMBLE ═══ -->
+    <div class="ds-view active" id="dsv-overview">
+      <div class="kpi-row">
+        <div class="kpi k-blue"><div class="kpi-v" id="k-part">-</div><div class="kpi-l">Participants</div></div>
+        <div class="kpi k-green"><div class="kpi-v" id="k-rec">-</div><div class="kpi-l">Enregistrements <span id="k-rec-exp"></span></div><div class="kpi-bar"><div id="k-rec-bar"></div></div></div>
+        <div class="kpi k-teal"><div class="kpi-v" id="k-ok">-</div><div class="kpi-l">Cases complètes (5/5)</div></div>
+        <div class="kpi k-red" data-kf="miss" title="Cliquer pour filtrer la matrice"><div class="kpi-v" id="k-miss">-</div><div class="kpi-l">Répétitions manquantes</div></div>
+        <div class="kpi k-purple" data-kf="dup" title="Cliquer pour filtrer la matrice"><div class="kpi-v" id="k-dup">-</div><div class="kpi-l">Doublons / en trop</div></div>
+        <div class="kpi k-amber"><div class="kpi-v" id="k-anom">-</div><div class="kpi-l">Déplacées en anomalie</div></div><div class="kpi k-blue"><div class="kpi-v" id="k-clean">-</div><div class="kpi-l">Nettoyées</div></div>
+      </div>
+
+      <div class="ds-toolbar">
+        <button class="btn-sm" id="ov-refresh">↻ Actualiser</button>
+        <label class="chk"><input type="checkbox" id="ov-only-bad"> Seulement les participants à problèmes</label>
+        <label class="chk"><input type="checkbox" id="ov-audit-dots" checked> Afficher les points d'audit</label>
+        <div class="legend">
+          <span><i class="lg s-ok"></i>5/5</span><span><i class="lg s-partial"></i>manquant</span>
+          <span><i class="lg s-dup"></i>doublon</span><span><i class="lg s-broken"></i>fichier manquant</span>
+          <span><i class="lg s-empty"></i>vide</span><span>📦 = déplacées en anomalie</span><span id="lg-audit" style="display:none;gap:12px"><span><i class="lg-dot" style="background:#B24E4A"></i>erreur d'audit</span><span><i class="lg-dot" style="background:#9A6A1C"></i>avertissement</span></span>
+        </div>
+      </div>
+
+      <div class="ds-note" id="ov-audit-line" style="margin:0 0 10px"></div>
+      <div class="ov-split" id="ov-split"><div class="ov-left">
+      <div class="matrix-wrap"><table id="ds-matrix" class="matrix"></table></div>
+      <div class="ds-note" id="ov-unknown"></div></div>
+
+      <div class="ds-card cell-card" id="ds-cell" style="display:none"></div></div>
+
+      <details class="ds-card" id="ov-anom-card" style="margin-top:14px">
+        <summary>📦 Répétitions déplacées en anomalie <span class="pill" id="ov-anom-n">0</span></summary>
+        <table class="ds-table" style="margin-top:10px"><tbody id="ov-anom"></tbody></table>
+        <div class="ds-note">Historique dans <code>data/anomalie/moves_log.csv</code>. Restaurer remet les fichiers dans <code>data/PXX</code> (le nettoyage devra être relancé).</div>
+      </details>
+    </div>
+
+    <!-- ═══ RÉPÉTITION ═══ -->
+    <div class="ds-view" id="dsv-audit">
+      <div class="ds-card c-amber" id="au-card" style="margin-top:0">
+        <h3>🔍 Intégrité des fichiers : quel type de fichier pose problème ?
+          <a class="link-plot" href="/api/dataset/audit/report.csv" style="float:right;text-transform:none;letter-spacing:0">⬇ rapport CSV</a></h3>
+        <div class="ds-row">
+          <button class="btn-sm go" id="au-start">▶ Lancer l'audit</button>
+          <button class="btn-sm danger" id="au-cancel" disabled>■ Annuler</button>
+          <span class="ds-note" id="au-meta" style="margin:0"></span>
+        </div>
+        <div class="ds-progress" id="au-bar" style="display:none"><div></div></div>
+        <div class="au-tiles" id="au-tiles"></div>
+        <table class="ds-table" id="au-codes" style="display:none">
+          <thead><tr><th>Famille</th><th>Problème</th><th>Gravité</th><th class="num">Répétitions</th></tr></thead>
+          <tbody id="au-codes-body"></tbody>
+        </table>
+        <div id="au-list" style="margin-top:12px"></div>
+        <div class="ds-note">Vérifie chaque fichier : présence, en-tête, valeurs, trous, couverture et cohérence avec les compteurs du marqueur STOP. Marqueurs, doigts et IMU sont séparés pour savoir où ça casse.</div>
+      </div>
+    </div>
+
+    <div class="ds-view" id="dsv-viewer">
+      <div class="ds-toolbar vw-bar">
+        <select class="select" id="vw-p"></select>
+        <select class="select" id="vw-g"></select>
+        <button class="btn-sm ghost" id="vw-prev" title="Enregistrement précédent">◀</button>
+        <select class="select" id="vw-rec" style="min-width:210px"></select>
+        <button class="btn-sm ghost" id="vw-next" title="Enregistrement suivant">▶</button>
+        <div class="seg" id="vw-src">
+          <button class="active" data-src="raw">Brut</button><button data-src="clean">Nettoyé</button>
+        </div>
+        <label class="chk"><input type="checkbox" id="vw-zoom" checked> Zoom START à STOP</label>
+      </div>
+      <div class="vw-chips" id="vw-chips"></div>
+      <div id="vw-issues"></div>
+      <div id="vw-charts"><div class="ds-empty">Choisis un participant, un geste et une répétition, ou clique une case de la vue d'ensemble puis « Voir ».</div></div>
+    </div>
+
+    <!-- ═══ STATISTIQUES ═══ -->
+    <div class="ds-view" id="dsv-stats">
+      <div class="ds-card c-purple" id="st-empty" style="display:none">
+        <h3>Pas de statistiques pour cette version</h3>
+        <div class="ds-note" style="margin:0">Aucun rapport de statistiques pour la version nettoyée affichée (il est écrit pendant le prétraitement). Si les données sont déjà nettoyées, relance le prétraitement en cochant « Retraiter les répétitions déjà nettoyées » (onglet « Prétraitement »), ou choisis une autre version du dataset nettoyé.</div>
+      </div>
+      <div id="st-main">
+        <div class="seg" id="st-sub" style="margin-bottom:12px"><button class="active" data-sv="simple">Brut vs Nettoyé</button><button data-sv="explore">Explorer</button></div>
+        <div id="st-pane-simple"><div id="st-simple"></div></div>
+        <div id="st-pane-explore" style="display:none">
+        <div class="ds-card" style="margin-bottom:12px">
+          <div class="st-line"><span class="st-lab">Métrique</span><select class="select" id="st-metric" style="min-width:260px"></select>
+            <span class="st-lab" style="margin-left:14px">Regrouper par</span><div class="tgs" id="st-dims"></div>
+            <div class="tgs" id="st-presets" style="margin-left:auto"></div></div>
+          <details class="st-adv" style="margin:0 0 10px"><summary>Filtres</summary><div class="st-line" style="margin-top:6px">
+            <input class="ds-input" id="st-f-p" style="width:150px" placeholder="Participants : 1,3,P05">
+            <input class="ds-input" id="st-f-g" style="width:150px" placeholder="Gestes : 1,5,12">
+            <span class="st-lab">Rép.</span><div class="tgs" id="st-f-r"></div>
+            <span class="st-lab">Capteur</span><div class="tgs" id="st-f-s"></div>
+            <button class="btn-sm ghost" id="st-reset" style="margin-left:auto">Réinitialiser</button></div></details>
+          <div class="st-line" style="margin-bottom:0"><span class="st-lab">Vue</span>
+            <div class="seg" id="st-view"><button class="active" data-v="table">Tableau</button><button data-v="heat">Carte thermique</button></div>
+            <button class="btn-sm ghost" id="st-export">⬇ Exporter CSV</button>
+            <span class="ds-note" id="st-meta" style="margin:0 0 0 auto"></span></div>
+        </div>
+        <div class="ds-note" id="st-help" style="margin:0 0 10px"></div>
+        <div class="vw-chips" id="st-chips"></div>
+        <div class="ds-card" id="st-result" style="margin-bottom:12px;overflow:auto"></div>
+        <div class="ds-card" id="st-detail"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ PRÉTRAITEMENT ═══ -->
+    <div class="ds-view" id="dsv-preproc">
+      <div class="ds-grid">
+        <div class="ds-card c-blue">
+          <h3>1 · Participants à traiter</h3>
+          <table class="ds-table">
+            <thead><tr><th><input type="checkbox" id="ds-all"></th><th>Participant</th><th class="num">Brutes</th><th class="num">Nettoyées</th></tr></thead>
+            <tbody id="ds-parts"></tbody>
+          </table>
+          <div class="ds-note" id="ds-parts-empty" style="display:none">Aucun dossier <code>data/PXX</code> trouvé.</div>
+        </div>
+        <div class="ds-card c-purple">
+          <h3>2 · Paramètres</h3>
+          <div class="ds-row">Fréquence de la grille <input class="ds-input" type="number" id="ds-freq" min="20" max="1000"> Hz</div>
+          <div class="ds-row">Interpolation <select class="select" id="ds-method"></select></div>
+          <div class="ds-row">Dataset nettoyé actif <select class="select" id="ds-cactive"></select></div>
+          <div class="ds-row">Nom du dataset nettoyé <input class="ds-input" type="text" id="ds-cname" list="ds-cnames" maxlength="60" placeholder="vide = version active" style="width:220px"><datalist id="ds-cnames"></datalist></div>
+          <div class="ds-note" id="ds-cinfo" style="margin-top:0"></div>
+          <div class="ds-row"><label class="chk"><input type="checkbox" id="ds-fixslope"> Horloges à la même vitesse (seul le décalage entre l'horloge du capteur et celle du PC est estimé). Nécessite un nom de version.</label></div>
+          <div class="ds-row"><label class="chk"><input type="checkbox" id="ds-overwrite"> Retraiter les répétitions déjà nettoyées</label></div>
+          <details class="st-adv" style="margin:0 0 8px"><summary>Avancé</summary>
+          <div class="ds-row">Processus en parallèle <input class="ds-input" type="number" id="ds-workers" min="1" max="16" style="width:64px"> <span class="ds-note" style="margin:0" id="ds-cpus"></span></div>
+          <div class="ds-row"><label class="chk"><input type="checkbox" id="ds-keep"> Conserver les fichiers intermédiaires (étapes 1 à 3)</label></div>
+          </details>
+          <div class="ds-row" style="margin-top:12px">
+            <button class="btn-sm go" id="ds-start">▶ Lancer le prétraitement</button>
+            <button class="btn-sm danger" id="ds-cancel" disabled>■ Annuler</button>
+          </div>
+          <div class="ds-note">Synchronisation des horloges capteur/PC · découpage entre début et fin du geste · grille de temps commune · fusion des capteurs.</div>
+        </div>
+      </div>
+
+      <div class="ds-card c-green" style="margin-bottom:14px">
+        <h3>3 · Progression</h3>
+        <div class="ds-counters">
+          <div class="stat accent"><strong id="ds-done">0/0</strong>Répétitions</div>
+          <div class="stat green"><strong id="ds-ok">0</strong>Traitées</div>
+          <div class="stat"><strong id="ds-skip">0</strong>Ignorées</div>
+          <div class="stat"><strong id="ds-errors">0</strong>Erreurs</div>
+          <div class="stat"><strong id="ds-speed">-</strong>Rép./s</div>
+        </div>
+        <div class="ds-progress" id="ds-bar"><div></div></div>
+        <div class="ds-note" id="ds-current">-</div>
+        <div class="ds-err" id="ds-recent-errors"></div>
+        <div class="ds-err" id="ds-notices" style="color:#9A6A1C;white-space:pre-line"></div>
+      </div>
+
+      <div class="ds-card c-amber" style="margin-bottom:14px">
+        <h3>4 · Qualité de la synchronisation <a class="link-plot" href="/api/preprocess/report.csv" style="float:right">⬇ rapport CSV</a></h3>
+        <table class="ds-table">
+          <thead><tr><th>Capteur</th><th class="num">N</th><th class="num">Hz natif</th><th class="num">Rapport d'horloges a</th>
+            <th class="num">Résidu (ms)</th><th class="num">Irrégularité Δt avant (ms)</th><th class="num">Irrégularité Δt après (ms)</th><th class="num">Doublons</th></tr></thead>
+          <tbody id="ds-quality"><tr><td colspan="8" style="color:var(--muted)">Aucun rapport pour l'instant.</td></tr></tbody>
+        </table>
+        <div class="ds-note" id="ds-quality-note"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- JEUX DE GESTES -->
+  <div class="tab-content" id="tab-sets">
+    <div class="gs-note">Un <b>jeu de gestes</b> est une liste de gestes avec <b>son propre carré latin</b> (un ordre d'enregistrement équilibré entre participants) et <b>ses propres données</b>. Le jeu <b>actif</b> est celui qu'utilisent l'enregistrement, le nettoyage, l'audit et le classifieur.</div>
+    <div class="gs-wrap">
+      <div>
+        <div id="gs-list"></div>
+        <button class="gs-b pri" id="gs-new" style="width:100%">+ Nouveau jeu</button>
+      </div>
+      <div class="ds-card" id="gs-editor" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- LOG -->
+  <div class="tab-content" id="tab-logpanel">
+    <div class="log-list" id="log-list"></div>
+  </div>
+</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── CHARTS ──
+const charts   = {};
+
+const FINGER_LABELS = ['Pouce','Index','Majeur','Annulaire','Auriculaire'];
+const FINGER_KEYS   = ['Thumb','Index','Middle','Ring','Pinky'];
+const FINGER_COLORS = ['#5C6FC4','#3C7F63','#9A6A1C','#B24E4A','#7A66B5'];
+const AXIS_COLORS   = { X:'#B24E4A', Y:'#C79635', Z:'#5C6FC4' };
+const IMU_LABELS    = ['Accel X','Accel Y','Accel Z','Gyro X','Gyro Y','Gyro Z'];
+const IMU_KEYS      = ['Accel_X','Accel_Y','Accel_Z','Gyro_X','Gyro_Y','Gyro_Z'];
+const IMU_COLORS    = ['#B24E4A','#C0702E','#9A6A1C','#5C6FC4','#3C7F63','#7A66B5'];
+
+const CHART_BASE = {
+  type: 'line',
+  options: {
+    responsive: true, maintainAspectRatio: false, animation: false,
+    plugins: { legend: { labels: { color:'#2A2926', font:{family:'DM Sans',size:8}, boxWidth:8, padding:5 } } },
+    scales: {
+      x: { display: false },
+      y: { ticks:{color:'#6F6B65',font:{family:'DM Sans',size:8}}, grid:{color:'#ECE9E4'} }
+    }
+  }
+};
+
+function makeChart(canvasId, datasets) {
+  if (charts[canvasId]) { charts[canvasId].destroy(); delete charts[canvasId]; }
+  const el = document.getElementById(canvasId);
+  if (!el) { console.warn('Canvas not found:', canvasId); return; }
+  charts[canvasId] = new Chart(el.getContext('2d'), {
+    ...CHART_BASE,
+    data: { labels: (datasets[0]?.data || []).map((_,i) => i), datasets }
+  });
+}
+
+// ── FINGER VIEW : génère 5 cartes par TAP dynamiquement ──
+function buildFingerGrid(gridId, rows) {
+  const grid = document.getElementById(gridId);
+  if (!grid) return;
+  // Détruire anciens charts dans cette grille
+  grid.querySelectorAll('canvas').forEach(c => {
+    if (charts[c.id]) { charts[c.id].destroy(); delete charts[c.id]; }
+  });
+  grid.innerHTML = '';
+
+  FINGER_KEYS.forEach((key, fi) => {
+    const cid  = `c-${gridId}-${fi}`;
+    const card = document.createElement('div');
+    card.className = 'chart-card';
+    card.innerHTML = `
+      <div class="chart-card-title" style="margin-bottom:5px">
+        ${FINGER_LABELS[fi]}
+        <span style="margin-left:auto;font-size:.55rem">
+          <span style="color:#B24E4A">■</span>X
+          <span style="color:#9A6A1C">■</span>Y
+          <span style="color:#5C6FC4">■</span>Z
+        </span>
+      </div>
+      <div class="chart-wrap"><canvas id="${cid}"></canvas></div>`;
+    grid.appendChild(card);
+
+    const datasets = ['X','Y','Z'].map(ax => ({
+      label: ax,
+      data:  rows ? rows.map(r => parseFloat(r[`${key}_${ax}`]) || 0) : [],
+      borderColor: AXIS_COLORS[ax],
+      backgroundColor: 'transparent',
+      borderWidth: 1.4, pointRadius: 0, tension: 0.15,
+    }));
+    // Attendre que le canvas soit dans le DOM
+    setTimeout(() => makeChart(cid, datasets), 0);
+  });
+}
+
+// ── IMU VIEW ──
+function buildImuChart(accelId, gyroId, emptyAccelId, emptyGyroId, rows) {
+  const emptyAccel = document.getElementById(emptyAccelId);
+  const emptyGyro = document.getElementById(emptyGyroId);
+  if (!rows || rows.length === 0) {
+    if (emptyAccel) { emptyAccel.style.display='flex'; emptyAccel.textContent='Pas de données'; }
+    if (emptyGyro) { emptyGyro.style.display='flex'; emptyGyro.textContent='Pas de données'; }
+    return;
+  }
+  if (emptyAccel) emptyAccel.style.display = 'none';
+  if (emptyGyro) emptyGyro.style.display = 'none';
+
+  const accelDatasets = ['Accel_X', 'Accel_Y', 'Accel_Z'].map(key => ({
+    label: key,
+    data: rows.map(r => parseFloat(r[key]) || 0),
+    borderColor: AXIS_COLORS[key.split('_')[1]],
+    backgroundColor: 'transparent',
+    borderWidth: 1.3, pointRadius: 0, tension: 0.15,
+  }));
+
+  const gyroDatasets = ['Gyro_X', 'Gyro_Y', 'Gyro_Z'].map(key => ({
+    label: key,
+    data: rows.map(r => parseFloat(r[key]) || 0),
+    borderColor: AXIS_COLORS[key.split('_')[1]],
+    backgroundColor: 'transparent',
+    borderWidth: 1.3, pointRadius: 0, tension: 0.15,
+  }));
+
+  setTimeout(() => {
+    makeChart(accelId, accelDatasets);
+    makeChart(gyroId, gyroDatasets);
+  }, 0);
+}
+
+// ── FETCH ──
+async function fetchRows(type, device) {
+  try {
+    const r = await fetch(`/api/plot_csv?type=${type}&device=${device}`);
+    const d = await r.json();
+    return d.error ? null : d;
+  } catch(e) { return null; }
+}
+
+// ── Mise en page des graphiques : un bloc par appareil du registre ──
+const SLOT_COLORS = ['#5C6FC4', '#3C7F63', '#9A6A1C', '#B24E4A', '#7A66B5', '#C0702E', '#3F8C88', '#C9605C'];
+function slotPill(slot, devs) {
+  const i = Math.max(0, Object.keys(devs).indexOf(slot));
+  const c = SLOT_COLORS[i % SLOT_COLORS.length];
+  return `<span class="tap-pill" style="background:${c}33;color:${c}">${slot}</span>`;
+}
+function plotSig(devs) {
+  return Object.entries(devs).map(([k, d]) => k + ':' + (d.streams || []).join('+')).join('|');
+}
+function currentDevices() {
+  return window._devices || LEGACY_DEVICES({});
+}
+function buildPlotLayout(devs) {
+  Object.keys(charts).forEach(id => { charts[id].destroy(); delete charts[id]; });
+  const head = 'font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px';
+  let html = '';
+  Object.entries(devs).forEach(([slot, d]) => {
+    if ((d.streams || []).includes('finger')) {
+      html += `<div style="${head}">Doigts - ${slotPill(slot, devs)}</div>
+        <div class="charts-grid mode-finger" style="margin-bottom:18px" id="grid-finger-${slot}"></div>`;
+    }
+  });
+  html += `<div style="${head}">IMU</div><div class="charts-grid mode-imu">`;
+  Object.entries(devs).forEach(([slot, d]) => {
+    if (!(d.streams || []).includes('imu')) return;
+    [['accel', 'Accél.'], ['gyro', 'Gyro']].forEach(([kind, title]) => {
+      html += `<div class="chart-card">
+        <div class="chart-card-title">${title} ${slotPill(slot, devs)}</div>
+        <div class="chart-wrap" style="height:180px">
+          <canvas id="chart-${kind}-${slot}"></canvas>
+          <div class="chart-empty" id="empty-${kind}-${slot}">Pas encore de données</div>
+        </div>
+      </div>`;
+    });
+  });
+  html += '</div>';
+  document.getElementById('plot-devices').innerHTML = html;
+  window._plotSig = plotSig(devs);
+}
+function plotJobs(devs) {
+  const jobs = [];
+  Object.entries(devs).forEach(([slot, d]) => (d.streams || []).forEach(st => jobs.push({slot, stream: st, key: `${st}_${slot}`})));
+  return jobs;
+}
+function drawPlots(devs, results) {
+  Object.entries(devs).forEach(([slot, d]) => {
+    const st = d.streams || [];
+    if (st.includes('finger')) buildFingerGrid(`grid-finger-${slot}`, results[`finger_${slot}`]?.rows || null);
+    if (st.includes('imu'))    buildImuChart(`chart-accel-${slot}`, `chart-gyro-${slot}`, `empty-accel-${slot}`, `empty-gyro-${slot}`, results[`imu_${slot}`]?.rows || null);
+  });
+}
+
+async function loadAllPlots() {
+  document.getElementById('btn-load-plot').textContent = 'Chargement...';
+  document.getElementById('btn-load-plot').disabled = true;
+
+  try {
+    const devs = currentDevices();
+    if (window._plotSig !== plotSig(devs)) buildPlotLayout(devs);
+    const jobs = plotJobs(devs);
+    const data = await Promise.all(jobs.map(j => fetchRows(j.stream, j.slot)));
+    const results = {};
+    jobs.forEach((j, i) => { results[j.key] = data[i]; });
+    drawPlots(devs, results);
+    const first = data.find(x => x && x.file);
+    document.getElementById('plot-filename').textContent = first
+      ? first.file.replace(/_(finger|imu)_[A-Za-z0-9]+\.csv$/, '...')
+      : 'Aucun fichier';
+  } finally {
+    document.getElementById('btn-load-plot').textContent = 'Charger';
+    document.getElementById('btn-load-plot').disabled = false;
+  }
+}
+
+// Charge les graphiques depuis des chemins CSV spécifiques (bouton "Voir" de l'historique)
+async function loadAllPlotsFromPaths(csvPaths, label) {
+  document.getElementById('btn-load-plot').textContent = 'Chargement...';
+  document.getElementById('btn-load-plot').disabled = true;
+  document.getElementById('plot-filename').textContent = label || '';
+
+  const fetchByPath = async (path) => {
+    if (!path) return null;
+    try {
+      const r = await fetch(`/api/plot_csv_by_path?path=${encodeURIComponent(path)}`);
+      const d = await r.json();
+      return d.error ? null : d;
+    } catch(e) { return null; }
+  };
+
+  try {
+    const devs = currentDevices();
+    if (window._plotSig !== plotSig(devs)) buildPlotLayout(devs);
+    const jobs = plotJobs(devs);
+    const data = await Promise.all(jobs.map(j => fetchByPath(csvPaths[j.key])));
+    const results = {};
+    jobs.forEach((j, i) => { results[j.key] = data[i]; });
+    drawPlots(devs, results);
+  } finally {
+    document.getElementById('btn-load-plot').textContent = 'Charger';
+    document.getElementById('btn-load-plot').disabled = false;
+  }
+}
+
+document.getElementById('btn-load-plot').addEventListener('click', loadAllPlots);
+
+// ── TABS ──
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+  });
+});
+
+// ── STATE ──
+async function fetchState() {
+  try {
+    const r = await fetch('/api/state');
+    const s = await r.json();
+    updateUI(s);
+  } catch(e) {}
+}
+
+function updateUI(s) {
+  const phase = s.phase;
+  document.getElementById('ds-lock').style.display = (s.phase === 'recording' || s.phase === 'countdown') ? 'block' : 'none';
+  const ready = phase === 'ready';
+  const rec   = phase === 'recording';
+  const cd    = phase === 'countdown';
+  const notDone = phase !== 'done' && phase !== 'idle';
+
+  // ── Auto-plot : si on vient de finir un enregistrement, charger le graphique automatiquement
+  if (window._prevPhase === 'recording' && phase !== 'recording') {
+    // Petit délai pour que le serveur ait le temps de finaliser les CSV
+    setTimeout(() => {
+      // Basculer sur l'onglet graphique si pas déjà actif
+      if (!document.getElementById('tab-plot').classList.contains('active')) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        document.querySelector('[data-tab="plot"]').classList.add('active');
+        document.getElementById('tab-plot').classList.add('active');
+      }
+      loadAllPlots();
+    }, 400);
+  }
+  window._prevPhase = phase;
+
+  // Sensors
+  const devs = getDevices(s);
+  renderDevices(devs, !s.tap_scanning && !s.recording && !(s.countdown > 0));
+  renderUntested(s);
+
+  // Scan state
+  const devSlots  = Object.keys(devs);
+  const total     = devSlots.length;
+  const connected = devSlots.filter(k => devs[k].connected).length;
+  document.getElementById('btn-connect').disabled    = s.tap_scanning;
+  document.getElementById('btn-disconnect').disabled = !s.tap_scanning;
+  const scanTxt = document.getElementById('scan-text');
+  scanTxt.innerHTML = s.tap_scanning
+    ? (connected < total ? `<span class="blink">EN ÉCOUTE</span> ${connected}/${total} connecté(s)` : `✓ ${total}/${total} connectés`)
+    : '';
+  document.getElementById('lsl-badge').style.display = s.lsl_active ? 'block' : 'none';
+  const hdr = document.getElementById('scan-header');
+  hdr.textContent = s.tap_scanning
+    ? (connected < total ? `⏳ ${connected}/${total} TAP` : `✓ ${total} TAP connectés`)
+    : 'Capteurs non connectés';
+  hdr.style.color = total > 0 && connected === total ? 'var(--green)' : connected > 0 ? 'var(--warn)' : 'var(--muted)';
+
+  // Participant feedback
+  const pidIn = document.getElementById('pid-input');
+  // On n'écrase plus pidIn.value ici pour éviter les conflits au moment du clic !
+  const pidStr = s.participant_id === 'test' ? 'TEST' : `P${String(s.participant_id).padStart(2,'0')}`;
+  document.getElementById('pid-feedback').textContent = phase === 'idle'
+    ? 'Participant pas encore défini : saisis-le puis clique « Définir »'
+    : `En cours : Participant ${pidStr} - Ordre : ${(s.gesture_order||[]).slice(0,3).join(', ')}...`;
+
+  // Status
+  document.getElementById('st-gesture').textContent = s.current_gesture || '-';
+  document.getElementById('st-progress').textContent = s.total_gestures > 0 
+    ? `${Math.min(s.current_gesture_idx + 1, s.total_gestures)}/${s.total_gestures}` 
+    : '0/0';
+  // Session
+  const sessIn = document.getElementById('session-input');
+  // On n'écrase plus sessIn.value ici ni plus bas.
+  document.getElementById('session-feedback').textContent = `Fichiers: ${pidStr}_S${String(s.session_number||1).padStart(2,'0')}_...`;
+  document.getElementById('st-session').textContent = phase === 'idle' ? '-' : `${pidStr} S${String(s.session_number||1).padStart(2,'0')}`;
+
+  document.getElementById('st-phase').textContent   = {idle:'Inactif',ready:'Prêt',countdown:`⏱ ${s.countdown}`,recording:'REC ●',done:'Terminé'}[phase] || phase;
+  document.getElementById('st-rep').textContent     = `${s.current_repetition+1}/${s.total_repetitions}`;
+  const elapsed = s.recording_elapsed || 0;
+  const fc = s.finger_count || 0;
+  const ic = s.imu_count    || 0;
+  const perSlot = s.imu_counts
+    ? Object.entries(s.imu_counts).map(([k, n]) => `${k}:${n}`).join(' ')
+    : `T1:${s.imu_count_tap1 || 0} T2:${s.imu_count_tap2 || 0}`;   // ancien serveur (v2)
+  const fhz = elapsed > 0 ? (fc / elapsed).toFixed(1) : '-';
+  const ihz = elapsed > 0 ? (ic / elapsed).toFixed(1) : '-';
+  document.getElementById('st-elapsed').textContent  = s.recording ? `${elapsed}s` : '-';
+  document.getElementById('st-finger-hz').textContent = s.recording ? `${fhz} Hz` : '-';
+  document.getElementById('st-imu-hz').textContent    = s.recording ? `${ihz} Hz` : '-';
+  document.getElementById('st-finger-n').textContent  = fc.toLocaleString();
+  document.getElementById('st-imu-n').textContent     = `${ic.toLocaleString()} (${perSlot})`;
+
+  // START / STOP buttons
+  document.getElementById('btn-start').disabled = !(ready);
+  document.getElementById('btn-stop').disabled  = !(rec);
+  { const need = [];
+    if (!s.tap_scanning || connected < total) need.push('connecter les capteurs');
+    if (phase === 'idle') need.push('définir un participant');
+    document.getElementById('rec-hint').textContent = (!ready && !rec && !cd) ? (phase === 'done' ? 'Session terminée.' : need.length ? 'Pour démarrer : ' + need.join(', ') + '.' : '') : '';
+    document.getElementById('act-hint').textContent = notDone ? '' : 'Disponible une fois un participant défini.'; }
+
+  // Countdown display
+  const cdDisp = document.getElementById('countdown-display');
+  if (cd && s.countdown > 0) {
+    cdDisp.classList.add('show');
+    document.getElementById('countdown-val').textContent = s.countdown;
+  } else {
+    cdDisp.classList.remove('show');
+  }
+
+  // Action buttons
+  document.getElementById('btn-retry').disabled  = !(notDone && !rec && !cd && s.history && s.history.length > 0);
+  document.getElementById('btn-skip').disabled   = !(notDone && !rec && !cd);
+  document.getElementById('btn-replay').disabled = !notDone;
+
+  // Gesture list
+  buildGestureList(s);
+
+  // History
+  buildHistory(s.history || []);
+
+  // Log
+  document.getElementById('log-list').innerHTML = (s.log||[]).map(l => `<div class="log-item">${l}</div>`).join('') || '<div class="log-item">Aucun événement pour l’instant.</div>';
+}
+
+// ── APPAREILS (registre du serveur) ──
+const LEGACY_DEVICES = (s) => ({
+  TAP1: {connected: !!s.tap1_connected, model: 'Tap', position: '', streams: ['finger', 'imu'], warning: null},
+  TAP2: {connected: !!s.tap2_connected, model: 'Tap', position: '', streams: ['imu'],           warning: null},
+});
+function getDevices(s) {
+  const devs = s.devices || LEGACY_DEVICES(s);          // sans « devices » : ancien serveur (v2)
+  window._devices = devs;
+  return devs;
+}
+function renderDevices(devs, editable) {
+  const box = document.getElementById('device-cards');
+  const sig = Object.keys(devs).join('|');
+  if (box.dataset.sig !== sig) {
+    box.dataset.sig = sig;
+    box.innerHTML = '';
+    Object.keys(devs).forEach(slot => {
+      const card  = document.createElement('div');
+      card.className = 'tap-card'; card.id = `dev-card-${slot}`;
+      const label = document.createElement('div'); label.className = 'tap-label';
+      const dot   = document.createElement('span'); dot.className = 'dot';
+      const name  = document.createElement('span'); name.className = 'dev-name';
+      label.append(dot, name);
+      const status = document.createElement('span'); status.className = 'tap-status';
+      const warn   = document.createElement('div');  warn.className = 'dev-warning';
+      const row    = document.createElement('div');  row.className = 'dev-row';
+      // Ligne 1 : numéro du slot + type d'appareil + supprimer. Ligne 2 : nom Bluetooth.
+      const slotSel = document.createElement('select'); slotSel.className = 'dev-pin dev-slot'; slotSel.style.flex = '0 0 auto'; slotSel.title = 'Numéro de l’emplacement (si le numéro est déjà pris, les deux emplacements échangent leur numéro)';
+      slotSel.addEventListener('change', () => devApi('/api/devices/update', {slot, new_slot: slotSel.value}, 'Numéro changé'));
+      const modelSel = document.createElement('select'); modelSel.className = 'dev-pin dev-model'; modelSel.title = "Type d'appareil";
+      ['TapStrap2', 'TapXR'].forEach(m => { const o = document.createElement('option'); o.value = o.textContent = m; modelSel.appendChild(o); });
+      modelSel.addEventListener('change', () => devApi('/api/devices/update', {slot, model: modelSel.value}, 'Type changé'));
+      const rm     = document.createElement('button'); rm.className = 'dev-rm'; rm.textContent = '✕'; rm.title = 'Supprimer cet emplacement';
+      rm.addEventListener('click', () => devApi('/api/devices/remove', {slot}, 'Emplacement supprimé'));
+      const pin    = document.createElement('input'); pin.type = 'text'; pin.className = 'dev-pin'; pin.placeholder = 'Nom Bluetooth (obligatoire), ex. TapXR_A215310';
+      pin.style.flexBasis = '100%';
+      pin.setAttribute('list', 'known-taps'); pin.autocomplete = 'off';
+      pin.placeholder = 'Nom Bluetooth : choisis dans la liste ou tape-le';
+      pin.addEventListener('change', () => {
+        const v = pin.value.trim();
+        const k = (window._knownTaps || []).find(t => t.name === v);
+        const body = {slot, name: v};
+        if (k && k.model) body.model = k.model;        // type déjà connu pour cet appareil
+        devApi('/api/devices/update', body, 'Nom enregistré');
+      });
+      row.append(slotSel, modelSel, rm, pin);
+      card.append(label, status, row, warn);
+      box.appendChild(card);
+    });
+  }
+  const canEdit = !!editable && Object.values(devs).every(d => 'pinned_name' in d);   // sans « pinned_name » : ancien serveur (v2)
+  document.getElementById('dev-add').style.display = canEdit ? 'flex' : 'none';
+  Object.entries(devs).forEach(([slot, d]) => {
+    const card = document.getElementById(`dev-card-${slot}`);
+    if (!card) return;
+    const on = !!d.connected;
+    card.className = on ? 'tap-card connected' : 'tap-card';
+    card.querySelector('.dot').className = on ? 'dot on' : 'dot';
+    card.querySelector('.dev-name').textContent = `${d.model || 'Tap'} · ${slot}` + (d.position ? ` (${({'right hand':'main droite','right forearm':'avant-bras droit'})[d.position] || d.position})` : '') + (d.name ? ` [${d.name}]` : '');
+    const st = card.querySelector('.tap-status');
+    st.textContent = on ? 'Connecté ✓' : 'Non connecté';
+    st.className = on ? 'tap-status ok' : 'tap-status';
+    const pin = card.querySelector('input.dev-pin');
+    if (document.activeElement !== pin) pin.value = d.pinned_name || '';
+    pin.disabled = !canEdit;
+    pin.style.borderColor = d.pinned_name ? '' : 'var(--red)';   // nom Bluetooth manquant
+    const slotSel = card.querySelector('.dev-slot'), modelSel = card.querySelector('.dev-model');
+    const nSlots = Math.max(8, Object.keys(devs).length);
+    const wanted = Array.from({length: nSlots}, (_, i) => 'TAP' + (i + 1));
+    if (!wanted.includes(slot)) wanted.push(slot);
+    if (slotSel.dataset.opts !== wanted.join('|')) {
+      slotSel.dataset.opts = wanted.join('|');
+      slotSel.innerHTML = wanted.map(s => `<option value="${s}">${s}</option>`).join('');
+    }
+    slotSel.value = slot; modelSel.value = d.model || 'TapStrap2';
+    slotSel.disabled = modelSel.disabled = !canEdit;
+    card.querySelector('.dev-row').style.display = canEdit ? 'flex' : 'none';
+    const w = card.querySelector('.dev-warning');
+    w.textContent = d.warning ? '⚠ ' + d.warning : '';
+    w.style.display = d.warning ? 'block' : 'none';
+  });
+  if (window._plotSig !== plotSig(devs)) buildPlotLayout(devs);
+}
+async function refreshKnownTaps() {
+  try {
+    const d = await (await fetch('/api/known_taps')).json();
+    window._knownTaps = d.taps || [];
+    let dl = document.getElementById('known-taps');
+    if (!dl) { dl = document.createElement('datalist'); dl.id = 'known-taps'; document.body.appendChild(dl); }
+    dl.innerHTML = '';
+    window._knownTaps.forEach(t => {
+      const o = document.createElement('option'); o.value = t.name; o.label = t.model ? `${t.model} · ${t.name}` : t.name;
+      dl.appendChild(o);
+    });
+  } catch(e) {}
+}
+refreshKnownTaps(); setInterval(refreshKnownTaps, 5000);
+async function devApi(path, body, label) {
+  try {
+    const r = await fetch(path, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const d = await r.json();
+    if (d.ok !== false) toast(label + ' ✓', 'ok'); else toast(d.msg || 'Error', 'err');
+    await fetchState();
+    return d.ok !== false;
+  } catch(e) { toast('Network error', 'err'); return false; }
+}
+function renderUntested(s) {
+  const b = document.getElementById('untested-banner');
+  b.textContent = s.untested_configuration ? '⚠ Configuration d\'appareils non testée : seule 1 TapStrap2 + 1 TapXR a été validée. Le prétraitement, l\'audit et le classifieur ne sont pas adaptés aux autres configurations.' : '';
+  b.style.display = s.untested_configuration ? 'block' : 'none';
+}
+function histSlots(h) {
+  return h.slot_counts
+    ? Object.entries(h.slot_counts).map(([k, c]) => `${k}:${c.imu}`).join(' ')
+    : `T1:${h.imu_count_tap1||0} T2:${h.imu_count_tap2||0}`;                  // ancien serveur (v2)
+}
+
+function buildGestureList(s) {
+  const order   = s.gesture_order || [];
+  const history = s.history || [];
+  const curIdx  = s.current_gesture_idx;
+  const curRep  = s.current_repetition;
+  const total   = s.total_repetitions;
+  const repStatus = {};
+  history.forEach(h => {
+    const idx = order.indexOf(h.gesture);
+    if (idx >= 0) { if (!repStatus[idx]) repStatus[idx] = []; repStatus[idx].push(h.status); }
+  });
+  let html = '';
+  order.forEach((g, i) => {
+    const isCur = i === curIdx, isDone = i < curIdx;
+    const cls   = isCur ? 'active' : isDone ? 'done' : '';
+    const reps  = repStatus[i] || [];
+    let pips = '';
+    for (let r = 0; r < total; r++) {
+      const st = reps[r];
+      pips += `<div class="pip ${st||''}${!st && isCur && r===curRep ? 'active' : ''}"></div>`;
+    }
+    const stTxt = isDone ? '<span style="color:var(--green)">✓</span>' : isCur ? `<span style="color:var(--accent)">${curRep+1}/${total}</span>` : '';
+    html += `<div class="g-row ${cls}"><span class="g-num">${i+1}</span><span>${g}${(s.gesture_labels||{})[g] ? ' · ' + (s.gesture_labels||{})[g] : ''}</span><div class="rep-pips">${pips}</div><span class="g-st">${stTxt}</span></div>`;
+  });
+  document.getElementById('gesture-list').innerHTML = html;
+}
+
+function buildHistory(history) {
+  if (!history.length) {
+    document.getElementById('history-tbody').innerHTML = '<tr><td colspan="8" style="color:var(--muted);padding:20px;text-align:center">Aucun enregistrement</td></tr>';
+    return;
+  }
+  // Stocker l'historique pour accès par index
+  window._history = history;
+  document.getElementById('history-tbody').innerHTML = history.slice().reverse().map((h, i) => {
+    const realIdx = history.length - 1 - i; // index dans le tableau original
+    return `
+    <tr>
+      <td style="color:var(--muted)">${history.length-i}</td>
+      <td>${h.gesture}</td><td>${h.rep}</td><td style="color:var(--muted)">${h.ts}</td>
+      <td>${(h.finger_count||0).toLocaleString()}</td><td>${(h.imu_count||0).toLocaleString()} <span style="font-size: 0.8em; color: var(--muted);">(${histSlots(h)})</span></td>
+      <td><span class="badge ${h.status}">${h.status}</span></td>
+      <td>${(h.csv_paths && Object.keys(h.csv_paths).length > 0)?`<span class="link-plot" onclick="loadPlotFromHistory(${realIdx})">Voir</span>`:'-'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function loadPlotFromHistory(idx) {
+  const h = (window._history || [])[idx];
+  if (!h || !h.csv_paths) { toast('Pas de CSV pour cet enregistrement', 'err'); return; }
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.querySelector('[data-tab="plot"]').classList.add('active');
+  document.getElementById('tab-plot').classList.add('active');
+  setTimeout(() => loadAllPlotsFromPaths(h.csv_paths, `${h.gesture} · Rép. ${h.rep}`), 50);
+}
+
+function loadPlot() {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.querySelector('[data-tab="plot"]').classList.add('active');
+  document.getElementById('tab-plot').classList.add('active');
+  setTimeout(loadAllPlots, 50);
+}
+
+// ── ACTIONS ──
+async function apiPost(url, label) {
+  try {
+    const r = await fetch(url, {method:'POST'});
+    const d = await r.json();
+    if (d.ok !== false) toast(label + ' ✓', 'ok');
+    else toast(d.msg || 'Erreur', 'err');
+    await fetchState();
+  } catch(e) { toast('Erreur réseau', 'err'); }
+}
+
+document.getElementById('btn-connect').addEventListener('click',    () => apiPost('/api/tap_connect',   'Scan démarré'));
+document.getElementById('btn-disconnect').addEventListener('click', () => { if(confirm('Réinitialiser ?')) apiPost('/api/tap_disconnect', 'Réinitialisé'); });
+document.getElementById('btn-add-dev').addEventListener('click', () => devApi('/api/devices/add', {}, 'Emplacement ajouté'));
+document.getElementById('btn-set-pid').addEventListener('click', async () => {
+  const pid = document.getElementById('pid-input').value.trim();
+  if (!pid) { toast('Saisis un participant', 'err'); return; }
+  await fetch('/api/set_participant', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({participant_id:pid})});
+  toast(`Participant ${pid} défini`, 'ok');
+  await fetchState();
+});
+document.getElementById('btn-set-session').addEventListener('click', async () => {
+  const num = parseInt(document.getElementById('session-input').value);
+  await fetch('/api/set_session', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({session_number:num})});
+  toast(`Session ${num} définie`, 'ok');
+  await fetchState();
+});document.getElementById('btn-set-rep').addEventListener('click', async () => {
+  const rep = parseInt(document.getElementById('rep-input').value);
+  await fetch('/api/set_repetition', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({repetition:rep})});
+  toast(`Répétition ${rep} forcée`, 'ok');
+  await fetchState();
+});document.getElementById('btn-start').addEventListener('click',  () => apiPost('/api/start',        'Compte à rebours...'));
+document.getElementById('btn-stop').addEventListener('click',   () => apiPost('/api/stop',         'Arrêté'));
+document.getElementById('btn-retry').addEventListener('click',  () => apiPost('/api/retry',        'Recommencé'));
+document.getElementById('btn-skip').addEventListener('click',   () => apiPost('/api/skip',         'Sauté'));
+document.getElementById('btn-replay').addEventListener('click', () => apiPost('/api/replay_video', 'Replay envoyé'));
+
+function toast(msg, type='ok') {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.className = `toast show ${type}`;
+  setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+
+// ── DATASET / PRÉTRAITEMENT ──
+const ds = { loaded:false, running:false };
+const fmt = (v, d=2) => (v === null || v === undefined || isNaN(v)) ? '-' : Number(v).toFixed(d);
+
+async function dsLoadVersions() {
+  try {
+    const d = await (await fetch('/api/preprocess/versions')).json();
+    const sel = document.getElementById('ds-cactive');
+    sel.innerHTML = d.versions.map(v => `<option value="${esc(v.slug)}">${v.slug ? esc(v.name) : 'Par défaut'} (${v.files} fichiers propres)</option>`).join('');
+    sel.value = d.active;
+    document.getElementById('ds-cnames').innerHTML = d.versions.filter(v => v.slug).map(v => `<option value="${esc(v.name)}">`).join('');
+    const a = d.versions.find(v => v.slug === d.active) || d.versions[0];
+    document.getElementById('ds-cinfo').textContent = a && a.slug && a.freq_hz ? `${a.freq_hz} Hz, ${a.method}${a.clock_corrected ? ', horloge corrigée' : ''}${a.fix_slope ? ', horloges à même vitesse' : ''}` : '';
+  } catch(e) {}
+}
+document.getElementById('ds-cactive').addEventListener('change', async e => {
+  const r = await (await fetch('/api/preprocess/version/select', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({slug: e.target.value})})).json();
+  if (r.ok === false) toast(r.msg || 'Error', 'err'); else document.getElementById('ds-cname').value = '';
+  dsRefreshAll();
+});
+let _cnameTimer = null;
+document.getElementById('ds-cname').addEventListener('input', () => { clearTimeout(_cnameTimer); _cnameTimer = setTimeout(dsLoadParticipants, 350); });
+dsLoadVersions();
+
+async function dsLoadParticipants() {
+  try {
+    const cn = (document.getElementById('ds-cname') || {value: ''}).value.trim();
+    const d = await (await fetch('/api/preprocess/participants' + (cn ? '?version=' + encodeURIComponent(cn) : ''))).json();
+    const tbody = document.getElementById('ds-parts');
+    const keep = new Set([...tbody.querySelectorAll('input:checked')].map(i => i.value));
+    const first = !ds.loaded;
+    tbody.innerHTML = '';
+    const names = Object.keys(d.participants);
+    document.getElementById('ds-parts-empty').style.display = names.length ? 'none' : 'block';
+    names.forEach(p => {
+      const c = d.participants[p];
+      const tr = document.createElement('tr');
+      const checked = (first ? c.clean < c.raw : keep.has(p)) ? 'checked' : '';
+      tr.innerHTML = `<td><input type="checkbox" value="${p}" ${checked}></td><td>${p}</td>
+        <td class="num">${c.raw}</td><td class="num">${c.clean}/${c.raw}</td>`;
+      tbody.appendChild(tr);
+    });
+    if (first) {
+      document.getElementById('ds-freq').value = d.defaults.freq_hz;
+      document.getElementById('ds-workers').value = d.defaults.workers;
+      document.getElementById('ds-cpus').textContent = `(${d.defaults.cpus} cœurs détectés)`;
+      const sel = document.getElementById('ds-method');
+      sel.innerHTML = d.defaults.methods.map(m => `<option value="${m}" ${m===d.defaults.method?'selected':''}>${m}</option>`).join('');
+      ds.loaded = true;
+    }
+  } catch(e) {}
+}
+
+function dsRenderQuality(sum) {
+  const tb = document.getElementById('ds-quality'), note = document.getElementById('ds-quality-note');
+  if (!sum || !sum.sensors || !Object.keys(sum.sensors).length) return;
+  tb.innerHTML = '';
+  Object.entries(sum.sensors).forEach(([name, s]) => {
+    const m = (o, k='mean', d=2) => o ? fmt(o[k], d) : '-';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${name}</td><td class="num">${s.n}</td><td class="num">${m(s.native_hz,'mean',1)}</td>
+      <td class="num">${m(s.slope_a,'mean',6)}</td>
+      <td class="num">${m(s.residual_std_ms)}</td>
+      <td class="num">${m(s.jitter_before_ms)}</td>
+      <td class="num">${m(s.jitter_after_ms)}</td>
+      <td class="num">${s.dup_removed_total}</td>`;
+    tb.appendChild(tr);
+  });
+  note.textContent = `${sum.ok}/${sum.repetitions} répétitions OK · ${sum.errors} erreur(s) · ${sum.repetitions_with_warnings} avec avertissement(s) · ${sum.repetitions_with_nan_filled} avec NaN comblés. Moyenne par capteur.`;
+}
+
+// Après un prétraitement : tout recharger (stats, vue d'ensemble, répétition affichée, liste des participants)
+function dsRefreshAll() {
+  DSV.overview = null;
+  viewLoad();
+  dsLoadVersions();
+  dsLoadParticipants();
+  stLoad();
+  ovLoad();
+  if ($('vw-rec') && $('vw-rec').options.length) vwLoadRecs($('vw-rec').value);
+}
+async function dsPoll() {
+  try {
+    const s = await (await fetch('/api/preprocess/status')).json();
+    ds.running = s.running;
+    const pct = s.total ? Math.round(100 * s.done / s.total) : 0;
+    document.getElementById('ds-done').textContent = `${s.done}/${s.total}`;
+    document.getElementById('ds-ok').textContent = s.ok;
+    document.getElementById('ds-skip').textContent = s.skipped;
+    document.getElementById('ds-errors').textContent = s.errors;
+    document.getElementById('ds-speed').textContent = (s.elapsed > 0 && s.done) ? (s.done / s.elapsed).toFixed(1) : '-';
+    const bar = document.getElementById('ds-bar');
+    bar.firstElementChild.style.width = (s.running || s.done ? pct : 0) + '%';
+    bar.classList.toggle('done', !s.running && s.total > 0 && s.done === s.total);
+    document.getElementById('ds-current').textContent = s.running
+      ? `${s.current}  ·  ${s.elapsed}s` : (s.message || '-');
+    document.getElementById('ds-recent-errors').textContent = (s.recent_errors || []).join('\n');
+    document.getElementById('ds-recent-errors').style.whiteSpace = 'pre-line';
+    document.getElementById('ds-notices').textContent = (s.notices || []).join('\n');
+    document.getElementById('ds-start').disabled = s.running;
+    document.getElementById('ds-cancel').disabled = !s.running;
+    dsRenderQuality(s.summary);
+    if (ds.wasRunning && !s.running) { dsRefreshAll(); toast((s.message || 'Terminé') + ((s.notices || []).length ? ' · ⚠ flux différents selon les répétitions (voir ci-dessous)' : ''), s.errors ? 'err' : 'ok'); }
+    ds.wasRunning = s.running;
+  } catch(e) {}
+}
+
+async function dsPost(url, body) {
+  const d = await (await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body||{})})).json();
+  if (d.ok === false) toast(d.msg || 'Erreur', 'err'); else toast('Lancé ✓', 'ok');
+  dsPoll();
+}
+
+document.getElementById('ds-all').addEventListener('change', e =>
+  document.querySelectorAll('#ds-parts input').forEach(i => i.checked = e.target.checked));
+document.getElementById('ds-start').addEventListener('click', () => {
+  const parts = [...document.querySelectorAll('#ds-parts input:checked')].map(i => i.value);
+  if (!parts.length) { toast('Sélectionner au moins un participant', 'err'); return; }
+  if (!confirm(`Lancer le prétraitement sur ${parts.length} participant(s)${document.getElementById('ds-overwrite').checked ? ' (en retraitant les répétitions déjà nettoyées)' : ''} ?`)) return;
+  dsPost('/api/preprocess/start', {
+    participants: parts,
+    freq_hz: parseInt(document.getElementById('ds-freq').value),
+    method: document.getElementById('ds-method').value,
+    overwrite: document.getElementById('ds-overwrite').checked,
+    fix_slope: document.getElementById('ds-fixslope').checked,
+    keep_intermediate: document.getElementById('ds-keep').checked,
+    version: document.getElementById('ds-cname').value.trim(),
+    workers: parseInt(document.getElementById('ds-workers').value) || undefined,
+  });
+});
+document.getElementById('ds-cancel').addEventListener('click', () => dsPost('/api/preprocess/cancel'));
+document.querySelector('[data-tab="dataset"]').addEventListener('click', () => { if (document.querySelector('.ds-sub.active').dataset.sub === 'overview') ovLoad(); });
+setInterval(() => {
+  if (ds.running || (document.getElementById('tab-dataset').classList.contains('active') && document.getElementById('dsv-preproc').classList.contains('active'))) dsPoll();
+}, 1000);
+
+
+// ═══ DATASET : vue d'ensemble · répétition · sous-navigation ═══
+const DSV = { overview:null, cell:null, sel:new Set(), recs:[], charts:[], lastRep:null, kf:null };
+
+// Sélection de répétitions à déplacer : gardée par dataset quand on change de geste ou de dataset (et conservée au rechargement)
+const SELKEY = 'ds-sel-';
+function selLoad(id) {
+  DSV.viewId = id; DSV.selStore = DSV.selStore || {};
+  if (!DSV.selStore[id]) {
+    let arr = []; try { arr = JSON.parse(sessionStorage.getItem(SELKEY + id) || '[]'); } catch(e) {}
+    DSV.selStore[id] = new Set(arr);
+  }
+  DSV.sel = DSV.selStore[id];
+}
+function selSave() { try { sessionStorage.setItem(SELKEY + DSV.viewId, JSON.stringify([...DSV.sel])); } catch(e) {} }
+// Dataset affiché par les pages Dataset / Prétraitement / Classifieur (indépendant de celui de l'enregistrement)
+async function viewLoad() {
+  try {
+    const d = await (await fetch('/api/view')).json();
+    const sel = document.getElementById('view-sel');
+    sel.innerHTML = d.sets.flatMap(s => s.datasets.map(x => `<option value="${esc(s.id)}|${esc(x.id)}">${esc(s.name)} · ${esc(x.name)}${x.active ? ' ●' : ''}</option>`)).join('');
+    sel.value = d.view.set + '|' + d.view.dataset;
+    const act = d.sets.find(s => s.id === d.active.set);
+    document.getElementById('view-note').textContent = d.view.following ? '' : 'Enregistrement sur : ' + (act ? act.name : d.active.set) + ' · ' + ((act && (act.datasets.find(x => x.id === d.active.dataset) || {}).name) || d.active.dataset) + ' ●';
+    const id = d.view.set + '/' + d.view.dataset;
+    if (DSV.viewId !== id) selLoad(id);
+  } catch(e) {}
+}
+document.getElementById('view-sel').addEventListener('change', async e => {
+  const [set, dataset] = e.target.value.split('|');
+  const r = await (await fetch('/api/view/select', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({set, dataset})})).json();
+  if (r.ok === false) { toast(r.msg || 'Erreur', 'err'); viewLoad(); return; }
+  DSV.cell = null; $('ds-cell').style.display = 'none'; $('ov-split').classList.remove('has-cell');
+  await viewLoad(); dsRefreshAll();
+});
+viewLoad();
+const $ = id => document.getElementById(id);
+const gnum = g => g.replace('Gesture_','');
+
+function dsShow(name) {
+  document.querySelectorAll('.ds-sub').forEach(x => x.classList.toggle('active', x.dataset.sub === name));
+  document.querySelectorAll('.ds-view').forEach(v => v.classList.toggle('active', v.id === 'dsv-' + name));
+  if (name === 'overview') ovLoad();
+  if (name === 'preproc')  { dsLoadParticipants(); dsPoll(); }
+  if (name === 'viewer')   vwInit();
+  if (name === 'stats')    stLoad();
+  if (name === 'audit')    auPoll();
+}
+document.querySelectorAll('.ds-sub').forEach(b => b.addEventListener('click', () => dsShow(b.dataset.sub)));
+
+// ── Vue d'ensemble ──────────────────────────────────────────
+async function ovLoad() {
+  try {
+    DSV.overview = await (await fetch('/api/dataset/overview')).json();
+    ovRender();
+    ovLoadAnomalies(); auPoll();
+    if (DSV.cell) ovOpenCell(DSV.cell.participant, DSV.cell.gesture, true);
+  } catch(e) { toast('Impossible de charger le dataset', 'err'); }
+}
+
+function ovRender() {
+  const o = DSV.overview; if (!o) return;
+  const t = o.totals, nG = o.gestures.length;
+  $('k-part').textContent = t.participants;
+  $('k-rec').textContent  = t.recordings;
+  $('k-rec-exp').textContent = '/ ' + t.expected_recordings;
+  $('k-rec-bar').style.width = (t.expected_recordings ? Math.min(100, 100 * t.recordings / t.expected_recordings) : 0) + '%';
+  $('k-ok').textContent   = `${t.cells.ok} / ${t.participants * nG}`;
+  $('k-miss').textContent = t.missing_reps;
+  $('k-dup').textContent  = t.duplicate_or_extra;
+  $('k-anom').textContent = t.anomalies;
+  $('k-clean').textContent = t.clean;
+  document.querySelectorAll('.kpi[data-kf]').forEach(k => k.classList.toggle('on', k.dataset.kf === DSV.kf));
+  $('ov-unknown').textContent = t.unknown_gestures.length ? '⚠ Gestes inattendus dans les fichiers : ' + t.unknown_gestures.join(', ') : '';
+
+  const selCells = new Set([...DSV.sel].map(k => { const m = /^(P\d+)_S\d+_(Gesture_\d+)_rep/.exec(k); return m ? m[1] + '|' + m[2] : ''; }));
+  const onlyBad = $('ov-only-bad').checked;
+  const showAu = $('ov-audit-dots').checked; $('lg-audit').style.display = showAu ? 'flex' : 'none';
+  let h = '<thead><tr><th class="rowh">Participant</th>' + o.gestures.map(g => `<th>${gnum(g)}</th>`).join('') + '</tr></thead><tbody>';
+  [...o.participants].sort((a, b) => ((a.gestures_ok === nG) - (b.gestures_ok === nG)) || String(a.participant).localeCompare(String(b.participant), undefined, {numeric: true})).forEach(r => {
+    if (onlyBad && r.cells.every(c => c.s === 'ok')) return;
+    if (DSV.kf === 'miss' && !r.cells.some(c => c.m.length && c.s !== 'empty')) return;
+    if (DSV.kf === 'dup' && !r.cells.some(c => c.d.length || c.x.length)) return;
+    const all = r.gestures_ok === nG;
+    h += `<tr><td class="rowh"><b>${r.participant}</b><span>${all ? '✔' : '⚠'} ${r.gestures_ok}/${nG} · ${r.clean}/${r.recordings} nettoyées${r.anomalies ? ' · 📦 ' + r.anomalies + ' en anomalie' : ''}</span></td>`;
+    r.cells.forEach((c, i) => {
+      const g = o.gestures[i];
+      const tip = [`${r.participant} · ${g} - ${c.n} enreg.`,
+        c.m.length && c.s !== 'empty' ? 'manque rep ' + c.m.join(', ') : '',
+        c.d.length ? 'doublon rep ' + c.d.join(', ') : '',
+        c.x.length ? 'en trop rep ' + c.x.join(', ') : '',
+        c.b ? c.b + ' enreg. incomplet(s)' : '',
+        c.ae ? c.ae + ' avec erreur d\'audit' : '', c.aw ? c.aw + ' avec avertissement(s)' : ''].filter(Boolean).join(' - ');
+      const sel = DSV.cell && DSV.cell.participant === r.participant && DSV.cell.gesture === g ? ' sel' : '';
+      const au_ = showAu ? (c.ae ? ' ae' : '') + (c.aw ? ' aw' : '') : '';
+      const sm = selCells.has(r.participant + '|' + g) ? ' selmark' : '';
+      h += `<td class="mc s-${c.s}${sel}${au_}${sm}" data-p="${r.participant}" data-g="${g}" title="${tip}">${c.n || '·'}</td>`;
+    });
+    h += '</tr>';
+  });
+  $('ds-matrix').innerHTML = h + '</tbody>';
+}
+$('ds-matrix').addEventListener('click', e => {
+  const td = e.target.closest('td.mc'); if (td) ovOpenCell(td.dataset.p, td.dataset.g);
+});
+$('ov-refresh').addEventListener('click', ovLoad);
+$('ov-only-bad').addEventListener('change', ovRender);
+$('ov-audit-dots').addEventListener('change', ovRender);
+document.querySelectorAll('.kpi[data-kf]').forEach(k => k.addEventListener('click', () => { DSV.kf = DSV.kf === k.dataset.kf ? null : k.dataset.kf; ovRender(); }));
+
+async function ovOpenCell(p, g, keepSel) {
+  try {
+    const d = await (await fetch(`/api/dataset/cell?participant=${p}&gesture=${g}`)).json();
+    if (d.error) { toast(d.error, 'err'); return; }
+    DSV.cell = d;
+    ovRenderCell(); ovRender();
+    $('ds-cell').scrollIntoView({behavior:'smooth', block:'nearest'});
+  } catch(e) { toast('Erreur de chargement', 'err'); }
+}
+
+function ovRenderCell() {
+  const d = DSV.cell, card = $('ds-cell'); card.style.display = 'block'; $('ov-split').classList.add('has-cell');
+  const stateTxt = {ok:['green','complet 5/5'], partial:['amber','incomplet'], dup:['purple','doublon / en trop'], broken:['red','fichier manquant'], empty:['grey','vide']}[d.state];
+  const hasDup = d.recordings.some(r => r.duplicate);
+  let h = `<div class="cell-head"><h4>${d.participant} · ${d.gesture.replace('_',' ')}</h4>
+    <span class="chip ${stateTxt[0]}">${stateTxt[1]}</span>
+    ${d.missing.length && d.state !== 'empty' ? d.missing.map(m => `<span class="chip red">rep ${m} manquante</span>`).join('') : ''}
+    <span class="chip grey">${d.recordings.length} enregistrement(s)</span><button class="btn-sm ghost" data-close style="margin-left:auto" title="Fermer">✕</button></div>`;
+  if (!d.recordings.length) { card.innerHTML = h + '<div class="ds-note">Aucun enregistrement pour ce geste.</div>'; return; }
+  const auKeys = pre => Array.from(new Set(d.recordings.flatMap(r => Object.keys(r.audit.files).filter(k => k.startsWith(pre))))).sort();
+  let fKeys = auKeys('finger_').filter((k, i) => i === 0 || d.recordings.some(r => (r.audit.files[k] || {}).rows > 0));
+  let iKeys = auKeys('imu_');
+  if (!fKeys.length) fKeys = ['finger_TAP1'];
+  if (!iKeys.length) iKeys = ['imu_TAP1', 'imu_TAP2'];
+  const auCells = (a, keys) => keys.map(k => `<span class="tl">${k.split('_')[1]}</span>${auChip(a, k)}`).join('');
+  h += `<table class="ds-table"><thead><tr><th></th><th>Rép.</th><th>Heure</th><th class="num">Durée</th>
+    <th>Marqueurs</th><th>Doigts</th><th>IMU</th><th>Nettoyé</th><th>Statut</th><th></th></tr></thead><tbody>`;
+  d.recordings.forEach(r => {
+    const a = r.audit, flags = [];
+    if (r.duplicate) flags.push('<span class="chip purple">DOUBLON</span>');
+    Object.entries(a.classes).forEach(([c, st]) => { if (st !== 'ok') flags.push(`<span class="chip ${AU_CLS[c][1]}">${AU_CLS[c][0]}</span>`); });
+    if (!flags.length) flags.push('<span class="chip green">OK</span>');
+    h += `<tr class="${r.duplicate ? 'dupe' : ''} ${a.status === 'error' ? 'bad' : ''}">
+      <td><input type="checkbox" class="mv" value="${r.key}" ${DSV.sel.has(r.key) ? 'checked' : ''}></td>
+      <td><b>rep${String(r.rep).padStart(2, '0')}</b></td><td>${r.time}</td><td class="num">${r.duration_s ?? '-'} s</td>
+      <td>${auChip(a, 'markers')}</td><td>${auCells(a, fKeys)}</td>
+      <td>${auCells(a, iKeys)}</td>
+      <td>${r.clean ? '<span style="color:var(--green)">✔</span>' : '<span style="color:var(--muted)">-</span>'}</td>
+      <td>${flags.join(' ')}</td>
+      <td><button class="btn-mini" data-view="${r.key}">👁 Voir</button></td></tr>`;
+  });
+  h += '</tbody></table>';
+  // problèmes détaillés : menu déroulant par famille de fichier, puis par type
+  const probs = [];
+  d.recordings.forEach(r => r.audit.issues.forEach(i => probs.push({rep: r.rep, ...i})));
+  if (probs.length) {
+    h += '<div style="margin-top:12px">';
+    Object.keys(AU_CLS).forEach(c => {
+      const pc = probs.filter(p => p.cls === c); if (!pc.length) return;
+      h += `<details class="prob-grp"><summary><span class="chip ${AU_CLS[c][1]}">${AU_CLS[c][0]}</span> ${pc.length} problème(s) · ${[...new Set(pc.map(p => AU_CODES[p.code] || p.code))].join(', ')}</summary>`;
+      [...new Set(pc.map(p => p.code))].forEach(code => {
+        const g = pc.filter(p => p.code === code);
+        h += `<details class="prob-sub"><summary><span class="chip ${sevColor(g[0].severity)}">${AU_CODES[code] || code}</span> ×${g.length}</summary>` +
+          g.map(p => `<div class="prob">rep${String(p.rep).padStart(2, '0')} · ${p.stream} - ${esc(p.msg)}</div>`).join('') + '</details>'; });
+      h += '</details>'; });
+    h += '</div>';
+  }
+  // sélection rapide par famille
+  const nCls = c => d.recordings.filter(r => r.audit.classes[c] !== 'ok').length;
+  h += `<div class="sel-bar"><span class="st-lab">Sélectionner :</span>` +
+    Object.entries(AU_CLS).filter(([c]) => nCls(c)).map(([c, [lab]]) => `<button class="btn-sm ghost" data-selcls="${c}">☑ problèmes ${lab.toLowerCase()} (${nCls(c)})</button>`).join('') +
+    (hasDup ? '<button class="btn-sm ghost" id="mv-auto">✨ doublons (garder le plus récent)</button>' : '') +
+    '<button class="btn-sm ghost" data-selcls="none">☐ rien (cette case)</button>' + (DSV.sel.size ? '<button class="btn-sm ghost" id="mv-clear">☐ tout désélectionner (' + DSV.sel.size + ')</button>' : '') + '</div>';
+  h += `<div class="move-bar">
+    <input class="ds-input" id="mv-reason" value="${esc(DSV.reason || '')}" style="width:240px" placeholder="Raison (optionnel), ex. STOP absent">
+    <button class="btn-sm danger" id="mv-go">📦 Déplacer la sélection vers anomalie</button>
+    <span class="ds-note" style="margin:0" id="mv-count"></span></div>`;
+  card.innerHTML = h;
+  ovUpdateCount();
+}
+
+$('ds-cell').addEventListener('change', e => {
+  if (!e.target.classList.contains('mv')) return;
+  e.target.checked ? DSV.sel.add(e.target.value) : DSV.sel.delete(e.target.value); selSave(); ovUpdateCount(); ovRender();
+});
+$('ds-cell').addEventListener('click', async e => {
+  if (e.target.closest('[data-close]')) { DSV.cell = null; $('ds-cell').style.display = 'none'; $('ov-split').classList.remove('has-cell'); ovRender(); return; }
+  const v = e.target.closest('[data-view]');
+  if (v) { vwOpen(DSV.cell.participant, DSV.cell.gesture, v.dataset.view); return; }
+  const sc = e.target.closest('[data-selcls]');
+  if (sc) {
+    const c = sc.dataset.selcls;
+    DSV.cell.recordings.forEach(r => DSV.sel.delete(r.key));          // ne touche que cette case : le reste de la sélection est conservé
+    if (c !== 'none') DSV.cell.recordings.filter(r => r.audit.classes[c] !== 'ok').forEach(r => DSV.sel.add(r.key));
+    selSave(); ovRenderCell(); ovRender(); return;
+  }
+  if (e.target.id === 'mv-auto') {
+    const byRep = {};
+    DSV.cell.recordings.forEach(r => (byRep[r.rep] = byRep[r.rep] || []).push(r));
+    DSV.cell.recordings.forEach(r => DSV.sel.delete(r.key));
+    Object.values(byRep).forEach(list => {
+      if (list.length > 1) list.sort((a, b) => a.stamp.localeCompare(b.stamp)).slice(0, -1).forEach(r => DSV.sel.add(r.key));
+    });
+    selSave(); ovRenderCell(); ovRender();
+  }
+  if (e.target.id === 'mv-clear') { DSV.sel.clear(); selSave(); ovRenderCell(); ovRender(); return; }
+  if (e.target.id === 'mv-go') {
+    const keys = [...DSV.sel];
+    if (!keys.length) { toast('Rien de sélectionné', 'err'); return; }
+    const by = {}; keys.forEach(k => { const p = k.split('_')[0]; (by[p] = by[p] || []).push(k); });
+    const here = DSV.cell ? DSV.cell.recordings.filter(r => keys.includes(r.key)) : [];
+    const brk = Object.entries(AU_CLS).map(([c, [lab]]) => [lab, here.filter(r => r.audit.classes[c] !== 'ok').length]).filter(x => x[1]);
+    if (!confirm(`Déplacer ${keys.length} répétition(s) vers anomalie ?\n` + Object.entries(by).map(([p, ks]) => `${p} : ${ks.length}`).join(', ') + '\n' +
+        (brk.length ? 'Problèmes détectés : ' + brk.map(x => `${x[0]} ×${x[1]}`).join(', ') + '\n' : 'Aucun problème détecté par l\'audit (déplacement manuel).\n') +
+        '(fichiers + vidéo + versions nettoyées ; le diagnostic est écrit dans moves_log.csv ; réversible)')) return;
+    let moved = 0, skipped = 0;
+    for (const [p, ks] of Object.entries(by)) {
+      const d = await (await fetch('/api/dataset/move', {method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({participant: p, keys: ks, reason: $('mv-reason') ? $('mv-reason').value : (DSV.reason || '')})})).json();
+      if (d.ok === false) { toast(d.msg || 'Erreur', 'err'); break; }
+      d.moved.forEach(k => DSV.sel.delete(k)); moved += d.moved.length; skipped += d.skipped.length;
+    }
+    selSave();
+    toast(`${moved} répétition(s) déplacée(s) ✓` + (skipped ? ` (${skipped} ?)` : ''), moved ? 'ok' : 'err');
+    ovLoad();
+  }
+});
+function ovUpdateCount() {
+  const c = $('mv-count'); if (!c) return;
+  if (!DSV.sel.size) { c.textContent = ''; return; }
+  const here = DSV.cell ? new Set(DSV.cell.recordings.map(r => r.key)) : new Set();
+  const out = [...DSV.sel].filter(k => !here.has(k)).length;
+  c.textContent = `${DSV.sel.size} sélectionnée(s)` + (out ? ' (' + `dont {n} dans d'autres cases`.replace('{n}', out) + ')' : '');
+}
+document.addEventListener('input', e => { if (e.target && e.target.id === 'mv-reason') DSV.reason = e.target.value; });
+
+async function ovLoadAnomalies() {
+  try {
+    const d = await (await fetch('/api/dataset/anomalies')).json();
+    $('ov-anom-n').textContent = d.items.length;
+    $('ov-anom').innerHTML = d.items.length ? d.items.map(r => {
+      const tags = (r.problems || '').split(';').filter(Boolean).map(t => { const c = t.split(':')[0];
+        return `<span class="chip ${(AU_CLS[c] || ['', 'grey'])[1]}" title="${esc(t)}">${esc(AU_CODES[t.split(':')[1]] || t)}</span>`; }).join(' ');
+      return `<tr><td><b>${r.participant}</b></td><td>${r.gesture.replace('_', ' ')}</td><td>rep${String(r.rep).padStart(2, '0')}</td>
+      <td style="color:var(--muted)">${r.stamp}</td>
+      <td><span class="chip ${r.origin === 'manuel' ? 'blue' : 'grey'}">${r.origin}</span></td>
+      <td>${tags || (r.complete ? '' : '<span class="chip red">fichier manquant</span>')} <span style="color:var(--muted)">${esc(r.reason)}</span></td>
+      <td style="text-align:right"><button class="btn-mini" data-aview="${r.key}" data-ap="${r.participant}" data-ag="${r.gesture}">👁 Voir</button>
+        <button class="btn-mini" data-restore="${r.key}" data-ap="${r.participant}">↩ Restaurer</button></td></tr>`; }).join('')
+      : '<tr><td style="color:var(--muted)">Aucune répétition en anomalie.</td></tr>';
+  } catch(e) {}
+}
+$('ov-anom').addEventListener('click', async e => {
+  const r = e.target.closest('[data-restore]');
+  if (r) {
+    const d = await (await fetch('/api/dataset/restore', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({participant: r.dataset.ap, key: r.dataset.restore})})).json();
+    d.ok === false ? toast(d.msg || 'Erreur', 'err') : (toast('Restaurée ✓', 'ok'), ovLoad());
+    return;
+  }
+  const v = e.target.closest('[data-aview]');
+  if (v) vwOpen(v.dataset.ap, v.dataset.ag, v.dataset.aview);
+});
+
+// ── Visualiseur d'une répétition (mêmes graphes que pendant l'enregistrement) ──
+const VW_AX = { X:'#B24E4A', Y:'#C79635', Z:'#5C6FC4' };
+const VW_FINGERS = [['Thumb','Pouce'],['Index','Index'],['Middle','Majeur'],['Ring','Annulaire'],['Pinky','Auriculaire']];
+const MARKER_LINES = {
+  id: 'markerLines',
+  afterDatasetsDraw(chart, args, opts) {
+    const a = chart.chartArea, x = chart.scales.x, ctx = chart.ctx;
+    (opts.lines || []).forEach(l => {
+      const px = x.getPixelForValue(l.t);
+      if (px < a.left || px > a.right) return;
+      ctx.save(); ctx.strokeStyle = l.color; ctx.lineWidth = 1.2; ctx.setLineDash([4, 3]);
+      ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke(); ctx.restore();
+    });
+  }
+};
+let vwReady = false;
+
+async function vwInit() {
+  if (!DSV.overview) DSV.overview = await (await fetch('/api/dataset/overview')).json();
+  const o = DSV.overview;
+  if (!vwReady || $('vw-p').options.length !== o.participants.length) {
+    $('vw-p').innerHTML = o.participants.map(p => `<option>${p.participant}</option>`).join('');
+    $('vw-g').innerHTML = o.gestures.map(g => `<option value="${g}">${g.replace('_', ' ')}</option>`).join('');
+    vwReady = true;
+  }
+  if (!DSV.opening && !$('vw-rec').options.length && $('vw-p').value && $('vw-g').value) await vwLoadRecs();
+}
+async function vwLoadRecs(selectKey) {
+  const p = $('vw-p').value, g = $('vw-g').value; if (!p || !g) return;
+  const d = await (await fetch(`/api/dataset/cell?participant=${p}&gesture=${g}`)).json();
+  DSV.recs = d.recordings || [];
+  $('vw-rec').innerHTML = DSV.recs.length
+    ? DSV.recs.map(r => `<option value="${r.key}">rep${String(r.rep).padStart(2, '0')} · ${r.time}${r.duplicate ? ' · DOUBLON' : ''}${r.clean ? ' · ✔' : ''}</option>`).join('')
+    : '<option value="">(aucun enregistrement)</option>';
+  if (selectKey) $('vw-rec').value = selectKey;
+  if (DSV.recs.length) vwLoad(); else { vwClear(); $('vw-charts').innerHTML = '<div class="ds-empty">Aucun enregistrement pour ce geste.</div>'; $('vw-chips').innerHTML = ''; }
+}
+function vwShowIssues(key) {
+  const rec = (DSV.recs || []).find(r => r.key === key), iss = rec && rec.audit ? rec.audit.issues : [];
+  if (!iss.length) { $('vw-issues').innerHTML = ''; return; }
+  const codes = [...new Set(iss.map(i => i.code))];
+  $('vw-issues').innerHTML = `<details class="vw-iss"><summary>⚠ ${iss.length} problème(s) détecté(s) par l\'audit ` +
+    codes.map(cd => `<span class="chip ${sevColor((iss.find(i => i.code === cd) || {}).severity)}">${AU_CODES[cd] || cd}</span>`).join(' ') + '</summary>' +
+    iss.map(i => `<div class="prob"><span class="chip ${sevColor(i.severity)}">${AU_CODES[i.code] || i.code}</span> ${i.stream} - ${esc(i.msg)}</div>`).join('') + '</details>';
+}
+async function vwOpen(p, g, key) {
+  DSV.opening = true;
+  try { dsShow('viewer'); await vwInit(); $('vw-p').value = p; $('vw-g').value = g; await vwLoadRecs(key); } finally { DSV.opening = false; }
+}
+function vwClear() { DSV.charts.forEach(c => c.destroy()); DSV.charts = []; }
+
+async function vwLoad() {
+  const key = $('vw-rec').value, p = $('vw-p').value; $('vw-issues').innerHTML = ''; if (!key) return;
+  vwShowIssues(key);
+  const src = document.querySelector('#vw-src .active').dataset.src;
+  $('vw-charts').innerHTML = '<div class="ds-empty">Chargement...</div>';
+  try {
+    const r = await fetch(`/api/dataset/rep?participant=${p}&key=${key}&source=${src}`);
+    const d = await r.json();
+    if (d.error) { vwClear(); $('vw-chips').innerHTML = ''; $('vw-charts').innerHTML = `<div class="ds-empty">${d.error}</div>`; return; }
+    DSV.lastRep = d; vwRender();
+  } catch(e) { $('vw-charts').innerHTML = '<div class="ds-empty">Erreur de chargement</div>'; }
+}
+
+function vwRender() {
+  const d = DSV.lastRep; if (!d) return;
+  vwClear();
+  const dur = d.window ? d.window[1] : null;
+  const zoom = $('vw-zoom').checked && dur;
+  const lines = [];
+  d.markers.forEach(m => {
+    const k = m.m.split('|')[0];
+    const color = {START:'#3C7F63', STOP:'#B24E4A', COUNTDOWN_START:'#6F6B65', RETRY:'#7A66B5'}[k];
+    if (color) lines.push({t: m.t, color});
+  });
+
+  // pastilles d'information
+  let chips = `<span class="chip ${d.source === 'clean' ? 'green' : 'blue'}">${d.source === 'clean' ? 'Nettoyé · grille commune' : 'Brut · tel qu\'enregistré'}</span>`;
+  if (dur) chips += `<span class="chip amber">durée ${dur.toFixed(2)} s</span>`;
+  if (d.rows) chips += `<span class="chip grey">${d.rows} lignes${dur ? ' · ≈ ' + Math.round(d.rows / dur) + ' Hz' : ''}</span>`;
+  Object.entries(d.sync || {}).forEach(([k, s]) => {
+    if (s) chips += `<span class="chip purple">${k.replace('_', ' ')} · ${s.native_hz ? s.native_hz.toFixed(0) : '?'} Hz · jitter ${s.jitter_before_ms.toFixed(2)} puis ${s.jitter_after_ms.toFixed(2)} ms</span>`;
+  });
+  if (d.source === 'raw') chips += d.has_clean ? '<span class="chip green">version nettoyée disponible</span>' : '<span class="chip grey">pas encore nettoyée</span>';
+  $('vw-chips').innerHTML = '';
+
+  const order = Object.keys(d.sensors).sort((a, b) => a.startsWith('finger') === b.startsWith('finger') ? a.localeCompare(b) : (a.startsWith('finger') ? -1 : 1));
+  let html = '';
+  order.forEach(k => {
+    const dev = k.split('_')[1], isF = k.startsWith('finger');
+    html += `<div class="vw-sec"><h4>${isF ? '🖐 Doigts' : '🧭 IMU'} <span class="tap-pill ${dev.toLowerCase()}">${dev}</span></h4>
+      <div class="${isF ? 'vw-grid-f' : 'vw-grid-i'}">`;
+    const groups = isF ? VW_FINGERS.map(([key, lab]) => [lab, ['X', 'Y', 'Z'].map(a => `${key}_${a}`)])
+                       : [['Accéléromètre', ['Accel_X', 'Accel_Y', 'Accel_Z']], ['Gyroscope', ['Gyro_X', 'Gyro_Y', 'Gyro_Z']]];
+    groups.forEach(([lab, cols], i) => html += `<div class="vw-card"><div class="t">${lab}</div><div class="vw-wrap"><canvas id="vw-${k}-${i}"></canvas></div></div>`);
+    html += '</div></div>';
+  });
+  $('vw-charts').innerHTML = html || '<div class="ds-empty">Aucune donnée.</div>';
+
+  order.forEach(k => {
+    const s = d.sensors[k], isF = k.startsWith('finger');
+    const groups = isF ? VW_FINGERS.map(([key]) => ['X', 'Y', 'Z'].map(a => `${key}_${a}`))
+                       : [['Accel_X', 'Accel_Y', 'Accel_Z'], ['Gyro_X', 'Gyro_Y', 'Gyro_Z']];
+    groups.forEach((cols, i) => {
+      const cv = $(`vw-${k}-${i}`); if (!cv) return;
+      const datasets = cols.filter(c => s.cols[c]).map(c => ({
+        label: c.replace(/^.*_/, ''), borderColor: VW_AX[c.slice(-1)], backgroundColor: 'transparent',
+        borderWidth: 1.3, pointRadius: 0, tension: .1,
+        data: s.t.map((x, j) => ({x, y: s.cols[c][j]})),
+      }));
+      DSV.charts.push(new Chart(cv.getContext('2d'), {
+        type: 'line', data: {datasets}, plugins: [MARKER_LINES],
+        options: { responsive: true, maintainAspectRatio: false, animation: false, parsing: false, normalized: true,
+          plugins: { legend: { labels: { color: '#2A2926', font: {family: 'DM Sans', size: 8}, boxWidth: 8, padding: 5 } }, markerLines: { lines } },
+          scales: { x: { type: 'linear', min: zoom ? -0.3 : undefined, max: zoom ? dur + 0.3 : undefined,
+                         ticks: { color: '#6F6B65', font: {family: 'DM Sans', size: 8}, maxTicksLimit: 8 }, grid: { color: '#ECE9E4' } },
+                    y: { ticks: { color: '#6F6B65', font: {family: 'DM Sans', size: 8} }, grid: { color: '#ECE9E4' } } } }
+      }));
+    });
+  });
+}
+
+$('vw-p').addEventListener('change', () => vwLoadRecs());
+$('vw-g').addEventListener('change', () => vwLoadRecs());
+$('vw-rec').addEventListener('change', vwLoad);
+$('vw-zoom').addEventListener('change', vwRender);
+$('vw-prev').addEventListener('click', () => { const s = $('vw-rec'); if (s.selectedIndex > 0) { s.selectedIndex--; vwLoad(); } });
+$('vw-next').addEventListener('click', () => { const s = $('vw-rec'); if (s.selectedIndex < s.options.length - 1) { s.selectedIndex++; vwLoad(); } });
+document.querySelectorAll('#vw-src button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('#vw-src button').forEach(x => x.classList.toggle('active', x === b)); vwLoad();
+}));
+
+
+// ═══ STATISTIQUES : regroupement (participant · geste · répétition · capteur) ═══
+const ST_METRICS = {
+  native_hz:             {l:'Cadence réelle (Hz)', bad:false, d:1, h:'Nombre de mesures par seconde réellement envoyées par le capteur.'},
+  jitter_before_ms:      {l:'Irrégularité d\'arrivée (ms)', bad:true, d:2, h:'À quel point le temps entre deux mesures varie sur le PC. Élevé car les mesures arrivent par paquets.'},
+  residual_std_ms:       {l:'Erreur de synchro (ms)', bad:true, d:2, h:'Précision de la synchronisation entre l\'horloge du capteur et celle du PC. Plus c\'est petit, mieux c\'est.'},
+  arrival_delay_mean_ms: {l:'Retard d\'arrivée moyen (ms)', bad:true, d:2, h:'De combien les mesures arrivent en retard sur le PC, en moyenne, par rapport à leur meilleure arrivée.'},
+  slope_a:               {l:'Rapport d\'horloges HW/LSL', bad:false, d:4, h:'Vitesse de l\'horloge du capteur comparée à celle du PC. Devrait valoir 1.'},
+};
+const ST_DIMS = {participant:'Participant', gesture:'Geste', repetition:'Répétition', sensor:'Capteur'};
+const ST_PRESETS = {
+  'Par participant':['participant'], 'Par geste':['gesture'], 'Par répétition':['repetition'], 'Par capteur':['sensor'],
+  'Participant × geste':['participant','gesture'], 'Participant × rép.':['participant','repetition'],
+};
+const ST = { rows:[], loaded:false, dims:['participant'], metric:'residual_std_ms', view:'table',
+             sort:{k:null, dir:-1}, reps:new Set(), sensors:new Set(), pick:null, lastTable:[], errors:0, paper:[] };
+
+function stLabel(dim, v) {
+  if (dim === 'gesture') return 'G' + String(v).replace('Gesture_', '');
+  return v;
+}
+async function stLoad() {
+  try {
+    const d = await (await fetch('/api/dataset/stats')).json();
+    $('st-empty').style.display = d.available ? 'none' : 'block';
+    $('st-main').style.display  = d.available ? 'block' : 'none';
+    if (!d.available) return;
+    ST.rows = d.rows.map(r => { const o = {}; d.cols.forEach((c, i) => o[c] = r[i]);
+      o.slope_ppm = o.slope_a != null ? (o.slope_a - 1) * 1e6 : null; return o; });
+    ST.errors = d.errors;
+    $('st-meta').textContent = `rapport du ${new Date(d.generated * 1000).toLocaleString('fr-BE')}`;
+    if (!ST.loaded) { stInitControls(); ST.loaded = true; }
+    stBuildToggles(); stRender(); stSimple();
+  } catch(e) { toast('Impossible de charger les statistiques', 'err'); }
+}
+function stInitControls() {
+  $('st-metric').innerHTML = Object.entries(ST_METRICS).map(([k, m]) => `<option value="${k}">${m.l}</option>`).join('');
+  $('st-metric').addEventListener('change', e => { ST.metric = e.target.value; ST.sort.k = null; ST.pick = null; stRender(); });
+  $('st-presets').innerHTML = Object.keys(ST_PRESETS).map(n => `<span class="tg pre" data-pre="${n}">${n}</span>`).join('');
+  $('st-presets').addEventListener('click', e => { const t = e.target.closest('[data-pre]'); if (!t) return;
+    ST.dims = [...ST_PRESETS[t.dataset.pre]]; ST.pick = null; ST.sort.k = null; stBuildToggles(); stRender(); });
+  $('st-dims').addEventListener('click', e => { const t = e.target.closest('[data-dim]'); if (!t) return;
+    const d = t.dataset.dim, i = ST.dims.indexOf(d);
+    i >= 0 ? ST.dims.splice(i, 1) : ST.dims.push(d);
+    ST.pick = null; ST.sort.k = null; stBuildToggles(); stRender(); });
+  $('st-f-r').addEventListener('click', e => { const t = e.target.closest('[data-r]'); if (!t) return;
+    const r = t.dataset.r; ST.reps.has(r) ? ST.reps.delete(r) : ST.reps.add(r); ST.pick = null; stBuildToggles(); stRender(); });
+  $('st-f-s').addEventListener('click', e => { const t = e.target.closest('[data-s]'); if (!t) return;
+    const s = t.dataset.s; ST.sensors.has(s) ? ST.sensors.delete(s) : ST.sensors.add(s); ST.pick = null; stBuildToggles(); stRender(); });
+  ['st-f-p', 'st-f-g'].forEach(id => $(id).addEventListener('input', () => { ST.pick = null; stRender(); }));
+  $('st-reset').addEventListener('click', () => { ST.reps.clear(); ST.sensors.clear(); $('st-f-p').value = ''; $('st-f-g').value = '';
+    ST.pick = null; stBuildToggles(); stRender(); });
+  $('st-view').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return;
+    ST.view = b.dataset.v; ST.pick = null;
+    document.querySelectorAll('#st-view button').forEach(x => x.classList.toggle('active', x === b)); stRender(); });
+  $('st-export').addEventListener('click', stExport);
+}
+function stBuildToggles() {
+  $('st-dims').innerHTML = Object.entries(ST_DIMS).map(([k, l]) => {
+    const i = ST.dims.indexOf(k);
+    return `<span class="tg ${i >= 0 ? 'on' : ''}" data-dim="${k}">${i >= 0 ? `<span class="ord">${i + 1}</span>` : ''}${l}</span>`; }).join('');
+  const reps = [...new Set(ST.rows.map(r => r.repetition))].sort();
+  $('st-f-r').innerHTML = reps.map(r => `<span class="tg ${ST.reps.has(r) ? 'on' : ''}" data-r="${r}">${r.replace('rep0', '').replace('rep', '')}</span>`).join('');
+  const sens = [...new Set(ST.rows.map(r => r.sensor))].sort();
+  $('st-f-s').innerHTML = sens.map(s => `<span class="tg ${ST.sensors.has(s) ? 'on' : ''}" data-s="${s}">${s}</span>`).join('');
+}
+
+// ── Calculs ──
+function stParseList(txt, kind) {
+  return txt.split(/[\s,;]+/).filter(Boolean).map(x => {
+    const n = parseInt(x.replace(/\D/g, ''));
+    return isNaN(n) ? null : (kind === 'p' ? 'P' + String(n).padStart(2, '0') : 'Gesture_' + String(n).padStart(2, '0'));
+  }).filter(Boolean);
+}
+function stFiltered() {
+  const ps = stParseList($('st-f-p').value, 'p'), gs = stParseList($('st-f-g').value, 'g');
+  let rows = ST.rows.filter(r =>
+    (!ps.length || ps.includes(r.participant)) && (!gs.length || gs.includes(r.gesture)) &&
+    (!ST.reps.size || ST.reps.has(r.repetition)) && (!ST.sensors.size || ST.sensors.has(r.sensor)));
+  if (ST_METRICS[ST.metric].perRep) {       // valeur propre à la répétition : une seule ligne par clé
+    const seen = new Set();
+    rows = rows.filter(r => { const k = r.key || `${r.participant}|${r.gesture}|${r.repetition}`; if (seen.has(k)) return false; seen.add(k); return true; });
+  }
+  return rows.filter(r => r[ST.metric] != null && !isNaN(r[ST.metric]));
+}
+function stQuant(sorted, q) { if (!sorted.length) return null; const p = (sorted.length - 1) * q, lo = Math.floor(p), hi = Math.ceil(p);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (p - lo); }
+function stStats(vals) {
+  const n = vals.length; if (!n) return null;
+  const s = [...vals].sort((a, b) => a - b), mean = vals.reduce((a, b) => a + b, 0) / n;
+  const sd = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / n);
+  return {n, mean, sd, med: stQuant(s, .5), min: s[0], max: s[n - 1]};
+}
+function stGroups(rows, dims) {
+  const m = new Map();
+  rows.forEach(r => { const k = dims.map(d => r[d]).join('\u0001'); if (!m.has(k)) m.set(k, {key: k, vals: dims.map(d => r[d]), rows: []}); m.get(k).rows.push(r); });
+  return [...m.values()].map(g => ({...g, st: stStats(g.rows.map(r => r[ST.metric]))}));
+}
+function stFmt(v, d) { return v == null || isNaN(v) ? '-' : Number(v).toFixed(d); }
+function stSev(mean, g) {            // vert / orange / rouge selon l'écart à la moyenne globale
+  if (!ST_METRICS[ST.metric].bad || !g || g.sd === 0) return '#5C6FC4';
+  const z = (mean - g.mean) / g.sd; return z > 1.5 ? '#B24E4A' : z > .75 ? '#9A6A1C' : '#3C7F63';
+}
+
+function stRender() {
+  const rows = stFiltered(), M = ST_METRICS[ST.metric], dec = M.d;
+  const glob = stStats(rows.map(r => r[ST.metric]));
+  $('st-help').textContent = M.h || '';
+  const nRep = new Set(rows.map(r => r.key || `${r.participant}|${r.gesture}|${r.repetition}`)).size;
+  let chips = `<span class="chip blue">${nRep} répétition(s)</span><span class="chip grey">${rows.length} mesure(s)</span>`;
+  if (glob) chips += `<span class="chip amber">moyenne globale ${stFmt(glob.mean, dec)} ± ${stFmt(glob.sd, dec)}</span><span class="chip purple">médiane ${stFmt(glob.med, dec)} · max ${stFmt(glob.max, dec)}</span>`;
+  if (ST.errors) chips += `<span class="chip red">${ST.errors} répétition(s) en erreur au prétraitement</span>`;
+  $('st-chips').innerHTML = chips;
+  if (!rows.length) { $('st-result').innerHTML = '<div class="ds-empty">Aucune donnée avec ces filtres.</div>'; $('st-detail').style.display = 'none'; return; }
+  ST.view === 'heat' ? stHeat(rows, glob) : stTable(rows, glob);
+  stDetail(rows);
+}
+
+function stTable(rows, glob) {
+  const M = ST_METRICS[ST.metric], dec = M.d, dims = ST.dims.length ? ST.dims : [];
+  let groups = dims.length ? stGroups(rows, dims) : [{key: 'all', vals: [], rows, st: stStats(rows.map(r => r[ST.metric]))}];
+  const k = ST.sort.k || (M.bad ? 'mean' : null), dir = ST.sort.k ? ST.sort.dir : -1;
+  if (k && /^d\d$/.test(k)) groups.sort((a, b) => String(a.vals[+k[1]]).localeCompare(String(b.vals[+k[1]])) * -dir);
+  else if (k) groups.sort((a, b) => (a.st[k] - b.st[k]) * dir * -1);
+  else groups.sort((a, b) => a.vals.join().localeCompare(b.vals.join()));
+  ST.lastTable = groups;
+  const maxMean = Math.max(...groups.map(g => g.st.mean), 1e-12), minMean = Math.min(...groups.map(g => g.st.mean), 0);
+  const th = (k, label, num) => `<th class="sortable ${num ? 'num' : ''} ${ST.sort.k === k ? 'sorted' : ''}" data-sort="${k}">${label}${ST.sort.k === k ? (ST.sort.dir < 0 ? ' ▾' : ' ▴') : ''}</th>`;
+  let h = '<table class="ds-table st-table"><thead><tr>' + dims.map((d, i) => th('d' + i, ST_DIMS[d])).join('') +
+    th('n', 'N', 1) + th('mean', 'Moyenne', 1) + th('sd', 'Écart-type', 1) + th('med', 'Médiane', 1) + th('max', 'Max', 1) + '</tr></thead><tbody>';
+  groups.forEach(g => {
+    const w = Math.max(2, 70 * (g.st.mean - Math.min(minMean, 0)) / ((maxMean - Math.min(minMean, 0)) || 1)), c = stSev(g.st.mean, glob);
+    h += `<tr data-gk="${encodeURIComponent(g.key)}" class="${ST.pick === g.key ? 'pick' : ''}">` +
+      g.vals.map((v, i) => `<td><b>${stLabel(dims[i], v)}</b></td>`).join('') + `<td class="num">${g.st.n}</td>` +
+      `<td class="num"><span class="st-bar" style="width:${w}px;background:${c}"></span>${stFmt(g.st.mean, dec)}</td>` +
+      `<td class="num">${stFmt(g.st.sd, dec)}</td><td class="num">${stFmt(g.st.med, dec)}</td><td class="num">${stFmt(g.st.max, dec)}</td></tr>`;
+  });
+  $('st-result').innerHTML = h + '</tbody></table>' + (M.bad ? '<div class="scale"><span class="st-dot" style="background:#3C7F63"></span>normal <span class="st-dot" style="background:#9A6A1C"></span>supérieur à la moyenne <span class="st-dot" style="background:#B24E4A"></span>nettement supérieur (> 1,5 σ)</div>' : '');
+}
+function stHeat(rows, glob) {
+  const M = ST_METRICS[ST.metric], dec = M.d;
+  let dims = ST.dims.slice(0, 2);
+  if (dims.length < 2) { for (const d of ['participant', 'gesture', 'repetition', 'sensor']) { if (!dims.includes(d)) dims.push(d); if (dims.length === 2) break; } }
+  const [rd, cd] = dims, cells = new Map(), rv = new Set(), cv = new Set();
+  stGroups(rows, [rd, cd]).forEach(g => { cells.set(g.key, g); rv.add(g.vals[0]); cv.add(g.vals[1]); });
+  const R = [...rv].sort(), C = [...cv].sort(), means = [...cells.values()].map(g => g.st.mean);
+  const lo = Math.min(...means), hi = Math.max(...means), rng = hi - lo || 1;
+  const col = v => { const t = (v - lo) / rng; return M.bad ? `hsl(${Math.round(140 - 140 * t)},75%,58%)` : `hsl(215,${Math.round(35 + 40 * t)}%,${Math.round(78 - 28 * t)}%)`; };
+  let h = `<table class="heat"><thead><tr><th class="rh">${ST_DIMS[rd]} \\ ${ST_DIMS[cd]}</th>${C.map(c => `<th>${stLabel(cd, c).replace('G', '')}</th>`).join('')}</tr></thead><tbody>`;
+  R.forEach(r => { h += `<tr><td class="rh">${stLabel(rd, r)}</td>`;
+    C.forEach(c => { const g = cells.get([r, c].join('\u0001'));
+      h += g ? `<td class="hc ${ST.pick === g.key ? 'pick' : ''}" data-gk="${encodeURIComponent(g.key)}" style="background:${col(g.st.mean)}" title="${stLabel(rd, r)} · ${stLabel(cd, c)}, n=${g.st.n}, moyenne ${stFmt(g.st.mean, dec)}, max ${stFmt(g.st.max, dec)}">${stFmt(g.st.mean, dec)}</td>`
+               : '<td class="hc none">·</td>'; });
+    h += '</tr>'; });
+  ST.lastHeat = {cells, dims: [rd, cd]};
+  $('st-result').innerHTML = h + `</tbody></table><div class="scale">${stFmt(lo, dec)}<i style="background:linear-gradient(90deg,${col(lo)},${col(lo + rng / 2)},${col(hi)})"></i>${stFmt(hi, dec)} <span style="margin-left:10px">moyenne par case · clic = détail</span></div>`;
+}
+$('st-result').addEventListener('click', e => {
+  const s = e.target.closest('[data-sort]');
+  if (s) { const k = s.dataset.sort; ST.sort = {k, dir: ST.sort.k === k ? -ST.sort.dir : -1}; stRender(); return; }
+  const g = e.target.closest('[data-gk]'); if (g) { ST.pick = decodeURIComponent(g.dataset.gk); stRender(); $('st-detail').scrollIntoView({behavior:'smooth', block:'nearest'}); }
+});
+
+function stDetail(rows) {
+  const card = $('st-detail'), M = ST_METRICS[ST.metric], dec = M.d;
+  let list = rows, title = 'Pires mesures (tous groupes)', dims = ST.view === 'heat' ? (ST.lastHeat ? ST.lastHeat.dims : []) : ST.dims;
+  if (ST.pick !== null) {
+    const g = (ST.view === 'heat' ? ST.lastHeat.cells.get(ST.pick) : ST.lastTable.find(x => x.key === ST.pick));
+    if (g) { list = g.rows; title = 'Détail : ' + g.vals.map((v, i) => stLabel(dims[i], v)).join(' · '); }
+  }
+  list = [...list].sort((a, b) => M.bad || ST.pick === null ? b[ST.metric] - a[ST.metric] : a.key.localeCompare(b.key)).slice(0, 25);
+  card.style.display = 'block';
+  card.innerHTML = `<h3>${title} <span style="float:right;text-transform:none;letter-spacing:0">${M.bad ? 'triées de la plus haute à la plus basse' : ''}</span></h3>
+    <table class="ds-table"><thead><tr><th>Participant</th><th>Geste</th><th>Rép.</th><th>Capteur</th><th class="num">${M.l}</th><th></th></tr></thead><tbody>` +
+    list.map(r => `<tr><td>${r.participant}</td><td>${r.gesture.replace('_', ' ')}</td><td>${r.repetition}</td><td>${r.sensor}</td>
+      <td class="num"><b>${stFmt(r[ST.metric], dec)}</b></td>
+      <td style="text-align:right">${r.key ? `<button class="btn-mini" data-vp="${r.participant}" data-vg="${r.gesture}" data-vk="${r.key}">👁 Voir</button>` : ''}</td></tr>`).join('') + '</tbody></table>';
+}
+$('st-detail').addEventListener('click', e => { const b = e.target.closest('[data-vk]'); if (b) vwOpen(b.dataset.vp, b.dataset.vg, b.dataset.vk); });
+
+function stExport() {
+  const rows = stFiltered(); if (!rows.length) { toast('Rien à exporter', 'err'); return; }
+  const dims = ST.view === 'heat' ? (ST.lastHeat ? ST.lastHeat.dims : ST.dims) : ST.dims;
+  const groups = dims.length ? stGroups(rows, dims) : [{vals: [], st: stStats(rows.map(r => r[ST.metric]))}];
+  const head = [...dims.map(d => ST_DIMS[d]), 'N', 'Moyenne', 'EcartType', 'Mediane', 'Min', 'Max'];
+  const lines = [head.join(';')].concat(groups.map(g => [...g.vals, g.st.n, ...['mean', 'sd', 'med', 'min', 'max'].map(k => g.st[k].toFixed(6).replace('.', ','))].join(';')));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['\ufeff' + lines.join('\n')], {type: 'text/csv'}));
+  a.download = `stats_${ST.metric}_${dims.join('-') || 'global'}.csv`; a.click();
+}
+
+
+// ── Vue principale : Brut vs Nettoyé, données seules ──
+function stSimple() {
+  const rows = ST.rows, num = a => a.filter(x => x != null && !isNaN(x));
+  const ms = (a, d) => { const v = num(a).sort((x, y) => x - y); return v.length ? `${stFmt(stQuant(v, .5), d)} [${stFmt(stQuant(v, .25), d)}–${stFmt(stQuant(v, .75), d)}]` : '-'; };
+  const sensors = [...new Set(rows.map(r => r.sensor))].sort(), grid = $('ds-freq') && $('ds-freq').value;
+  const nRep = new Set(rows.map(r => r.key)).size, nPart = new Set(rows.map(r => r.participant)).size;
+  ST.paper = [];
+  let h = `<div class="sx-head"><span>${nRep} répétitions · ${nPart} participants · médiane [Q1–Q3] (robuste aux valeurs aberrantes)</span>
+    <button class="btn-sm ghost" id="sx-tex">Copier en LaTeX</button><button class="btn-sm ghost" id="sx-csv">⬇ CSV</button></div>`;
+  sensors.forEach(sn => {
+    const R = rows.filter(r => r.sensor === sn), c = k => R.map(r => r[k]);
+    const L = [
+      ['Cadence réelle (Hz)', ms(c('native_hz'), 1), grid ? grid + ' (grille)' : 'grille'],
+      ['Irrégularité d\'arrivée (ms)', ms(c('jitter_before_ms'), 2), '0'],
+      ['Erreur de synchro (ms)', ms(c('residual_std_ms'), 2), '-'],
+      ['Retard d\'arrivée moyen (ms)', ms(c('arrival_delay_mean_ms'), 2), '-'],
+      ['Rapport d\'horloges HW/LSL', ms(c('slope_a'), 4), '-']];
+    L.forEach(r => ST.paper.push([sn, ...r]));
+    h += `<div class="sx-card"><h4>${sn}<span>${R.length} répétitions</span></h4><table class="ds-table"><thead><tr><th>Mesure</th><th class="num">Brut</th><th class="num">Nettoyé</th></tr></thead><tbody>` +
+      L.map(r => `<tr><td>${r[0]}</td><td class="num"><b>${r[1]}</b></td><td class="num">${r[2]}</td></tr>`).join('') + '</tbody></table></div>';
+  });
+  h += '<div class="sx-foot">Définition de chaque mesure : voir metriques_stats.md</div>';
+  $('st-simple').innerHTML = h;
+}
+$('st-simple').addEventListener('click', e => {
+  if (e.target.id === 'sx-tex') {
+    const by = {}; ST.paper.forEach(r => (by[r[0]] = by[r[0]] || []).push(r));
+    const t = Object.entries(by).map(([sn, rs]) => `% ${sn}\n\\begin{tabular}{lrr}\n\\hline\nMesure & Brut & Nettoyé \\\\\n\\hline\n` +
+      rs.map(r => r.slice(1).map(x => x.replace(/±/g, '$\\pm$')).join(' & ') + ' \\\\').join('\n') + '\n\\hline\n\\end{tabular}').join('\n\n');
+    navigator.clipboard.writeText(t).then(() => toast('Tableau LaTeX copié', 'ok'));
+  } else if (e.target.id === 'sx-csv') {
+    const t = ['Capteur;Mesure;Brut;Nettoye'].concat(ST.paper.map(r => r.join(';'))).join('\n'), a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(['\ufeff' + t], {type: 'text/csv'})); a.download = 'stats_brut_vs_nettoye.csv'; a.click();
+  }
+});
+$('st-sub').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return;
+  document.querySelectorAll('#st-sub button').forEach(x => x.classList.toggle('active', x === b));
+  $('st-pane-simple').style.display = b.dataset.sv === 'simple' ? 'block' : 'none';
+  $('st-pane-explore').style.display = b.dataset.sv === 'explore' ? 'block' : 'none'; });
+
+
+// ═══ AUDIT D'INTÉGRITÉ + détail par type de fichier ═══
+const AU_CODES = {
+  missing_file:'Fichier absent', empty_file:'Fichier vide (0 octet)', empty:'Aucune ligne de données', unreadable:'Fichier illisible',
+  bad_header:'En-tête inattendu', bad_timestamp:'Timestamp invalide', no_start:'Pas de marqueur START', multi_start:'Plusieurs START',
+  no_stop:'Pas de marqueur STOP', multi_stop:'Plusieurs STOP', order:'STOP avant START', duration:'Durée suspecte',
+  no_countdown:'Compte à rebours absent', retry_marker:'Marqueur RETRY conservé', no_counters:'STOP sans compteurs',
+  nan:'Valeurs manquantes', time_backwards:'Timestamps à rebours', clock_span:'Horloge HW ≠ LSL',
+  no_data_in_window:'Rien entre START et STOP', low_coverage:'Échantillons manquants', gap:'Trou dans le flux',
+  count_mismatch:'Compteurs STOP ≠ CSV',
+};
+const AU_CLS = {markers:['Marqueurs','mk'], finger:['Doigts','fg'], imu:['IMU','im'], cross:['Cohérence','cr']};
+const au = { running:false, was:false };
+const esc = t => String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const sevColor = s => s === 'error' ? 'red' : s === 'warning' ? 'amber' : 'green';
+
+function auChip(a, stream, short) {
+  const f = a.files[stream], iss = a.issues.filter(i => i.stream === stream);
+  const tip = esc(iss.map(i => '• ' + i.msg).join('\n'));
+  if (!f) return '<span class="chip grey">-</span>';
+  if (!f.present) return iss.length ? `<span class="chip red" title="${tip}">✕ absent</span>` : '<span class="chip grey" title="non écrit">-</span>';
+  const sym = f.status === 'error' ? '✕' : f.status === 'warning' ? '⚠' : '✔';
+  const n = stream === 'markers' ? f.rows + ' marq.' : (f.rows_window != null ? f.rows_window : f.rows);
+  return `<span class="chip ${sevColor(f.status)}" title="${tip || 'OK'}">${sym} ${n}</span>`;
+}
+
+async function auPoll() {
+  try {
+    const s = await (await fetch('/api/dataset/audit/status')).json();
+    au.running = s.running;
+    $('au-start').disabled = s.running; $('au-cancel').disabled = !s.running;
+    const bar = $('au-bar');
+    bar.style.display = s.running ? 'block' : 'none';
+    bar.firstElementChild.style.width = (s.total ? 100 * s.done / s.total : 0) + '%';
+    const sm = s.summary;
+    $('au-meta').textContent = s.running ? `Audit... ${s.done}/${s.total}` :
+      (s.message || (sm ? `Dernier audit : ${new Date(sm.generated * 1000).toLocaleString('fr-BE')}` : 'Aucun audit effectué'));
+    auRender(sm);
+    if (au.was && !s.running) { ovLoad(); toast(s.message || 'Audit terminé', 'ok'); }
+    au.was = s.running;
+  } catch(e) {}
+}
+function auSummary(sm) {
+  const nErr = sm ? (sm.with_errors || 0) : 0, nWarn = sm ? (sm.with_warnings_only || 0) : 0;
+  const bd = $('au-badge'); bd.style.display = nErr ? 'inline' : 'none'; bd.textContent = nErr;
+  $('ov-audit-line').innerHTML = sm ? `🔍 Audit : ${nErr} répétition(s) en erreur · ${nWarn} avec avertissement(s) sur ${sm.audited} auditées - <a class="link-plot" data-go-audit>voir le détail</a>` : '🔍 Audit non lancé - <a class="link-plot" data-go-audit>ouvrir l\'onglet Audit</a>';
+}
+$('ov-audit-line').addEventListener('click', e => { if (e.target.closest('[data-go-audit]')) dsShow('audit'); });
+function auRender(sm) {
+  auSummary(sm);
+  if (!sm) { $('au-tiles').innerHTML = ''; $('au-codes').style.display = 'none'; return; }
+  $('au-tiles').innerHTML = Object.entries(AU_CLS).map(([c, [lab, k]]) => {
+    const b = sm.by_class[c] || {error: 0, warning: 0};
+    const tone = b.error ? 't-err' : b.warning ? 't-warn' : 't-ok';
+    return `<div class="au-tile ${tone}" data-cls="${c}"><div class="big">${b.error}</div><div class="lbl">${lab} : erreurs</div>
+      <div class="sub">${b.warning} avertissement(s) · sur ${sm.audited} répétitions${b.error ? '<br><b style="color:var(--accent)">▸ cliquer pour afficher la liste (rien n’est déplacé)</b>' : ''}</div></div>`; }).join('');
+  const rows = sm.codes || [];
+  $('au-codes').style.display = rows.length ? 'table' : 'none';
+  $('au-codes-body').innerHTML = rows.map(r => `<tr data-cls="${r.cls}" data-code="${r.code}">
+    <td><span class="chip ${AU_CLS[r.cls][1]}">${AU_CLS[r.cls][0]}</span></td><td><span title="${r.code}">${AU_CODES[r.code] || r.code}</span></td>
+    <td><span class="chip ${sevColor(r.severity)}">${r.severity === 'error' ? 'erreur' : 'avertissement'}</span></td><td class="num"><b>${r.recordings}</b></td></tr>`).join('');
+  if (!rows.length) $('au-list').innerHTML = `<div class="chip green">✔ ${sm.audited} répétitions auditées, aucun problème détecté</div>`;
+}
+$('au-start').addEventListener('click', async () => {
+  const d = await (await fetch('/api/dataset/audit/start', {method:'POST'})).json();
+  d.ok === false ? toast(d.msg || 'Erreur', 'err') : (toast('Audit lancé', 'ok'), au.was = true, auPoll());
+});
+$('au-cancel').addEventListener('click', () => fetch('/api/dataset/audit/cancel', {method:'POST'}));
+// Liste des répétitions en problème + déplacement vers anomalie
+function auShow(items, title) {
+  const m = new Map();
+  items.forEach(r => { let o = m.get(r.key);
+    if (!o) { o = {key: r.key, participant: r.participant, gesture: r.gesture, repetition: r.repetition, msgs: []}; m.set(r.key, o); }
+    const t = AU_CODES[r.code] || r.code; if (!o.msgs.includes(t)) o.msgs.push(t); });
+  au.reps = [...m.values()];
+  if (!au.reps.length) { $('au-list').innerHTML = '<div class="ds-note">Aucune répétition.</div>'; return; }
+  $('au-list').innerHTML = `<div class="ds-toolbar" style="margin-bottom:8px"><b>${esc(title)}</b>
+      <span class="ds-note" style="margin:0">${au.reps.length} répétition(s)</span>
+      <button class="btn-sm ghost" id="au-all">Tout sélectionner</button>
+      <input class="ds-input" id="au-reason" style="width:220px" value="audit : ${esc(title)}">
+      <button class="btn-sm danger" id="au-move" disabled>📦 Déplacer vers anomalie (0)</button></div>
+    <table class="ds-table"><thead><tr><th></th><th>Participant</th><th>Geste</th><th>Rép.</th><th>Session · heure</th><th>Problème(s)</th><th></th></tr></thead><tbody>` +
+    au.reps.map((r, i) => `<tr><td><input type="checkbox" class="au-ck" data-i="${i}"></td><td>${r.participant}</td><td>${r.gesture.replace('_', ' ')}</td><td>${r.repetition}</td><td>${auWhen(r.key)}</td><td>${esc(r.msgs.join(' · '))}</td>
+      <td style="text-align:right"><button class="btn-mini" data-vw="${r.participant}|${r.gesture}|${r.key}">👁 Voir</button></td></tr>`).join('') + '</tbody></table>';
+}
+function auWhen(key) {
+  const m = key.match(/_S(\d+)_.*_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})$/);
+  return m ? `S${m[1]} · ${m[4]}/${m[3]} ${m[5]}:${m[6]}:${m[7]}` : '';
+}
+function auCount() {
+  const n = document.querySelectorAll('.au-ck:checked').length, b = $('au-move');
+  if (b) { b.disabled = !n; b.textContent = `📦 Déplacer vers anomalie (${n})`; }
+}
+$('au-tiles').addEventListener('click', async e => {
+  const t = e.target.closest('[data-cls]'); if (!t) return;
+  const cls = t.dataset.cls, d = await (await fetch(`/api/dataset/audit/issues?cls=${cls}&severity=error&limit=5000`)).json();
+  auShow(d.items, `${AU_CLS[cls][0]} : erreurs`);
+});
+$('au-codes-body').addEventListener('click', async e => {
+  const tr = e.target.closest('tr'); if (!tr) return;
+  const d = await (await fetch(`/api/dataset/audit/issues?cls=${tr.dataset.cls}&code=${tr.dataset.code}&limit=5000`)).json();
+  auShow(d.items, AU_CODES[tr.dataset.code] || tr.dataset.code);
+});
+$('au-list').addEventListener('change', e => { if (e.target.classList.contains('au-ck')) auCount(); });
+$('au-list').addEventListener('click', async e => {
+  const o = e.target.closest('[data-vw]');
+  if (o) { const [p, g, k] = o.dataset.vw.split('|'); vwOpen(p, g, k); return; }
+  if (e.target.id === 'au-all') {
+    const cks = [...document.querySelectorAll('.au-ck')], all = cks.every(x => x.checked);
+    cks.forEach(x => x.checked = !all); auCount(); return;
+  }
+  if (e.target.id === 'au-move') {
+    const sel = [...document.querySelectorAll('.au-ck:checked')].map(x => au.reps[+x.dataset.i]);
+    if (!sel.length || !confirm(`Déplacer ${sel.length} répétition(s) vers data/anomalie ?\nElles pourront être restaurées depuis la vue d'ensemble.`)) return;
+    const by = {}; sel.forEach(r => (by[r.participant] = by[r.participant] || []).push(r.key));
+    const reason = $('au-reason').value; let moved = 0, skipped = 0;
+    for (const [p, keys] of Object.entries(by)) {
+      const d = await (await fetch('/api/dataset/move', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({participant:p, keys, reason})})).json();
+      if (d.ok === false) { toast(d.msg || 'Erreur', 'err'); break; }
+      moved += d.moved.length; skipped += d.skipped.length;
+      const gone = new Set(d.moved); au.reps = au.reps.map(r => gone.has(r.key) ? null : r);
+    }
+    toast(`${moved} répétition(s) déplacée(s)${skipped ? ` · ${skipped} ignorée(s)` : ''}`, moved ? 'ok' : 'err');
+    document.querySelectorAll('.au-ck:checked').forEach(x => x.closest('tr').remove()); auCount();
+    DSV.overview = null; ovLoad(); auPoll();
+  }
+});
+setInterval(() => { if (au.running) auPoll(); }, 1000);
+
+fetchState();
+setInterval(fetchState, 600);
+
+// ═══════════ JEUX DE GESTES ═══════════
+const GS = { sets: [], active: null, cur: null };
+const gsEsc = v => String(v ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function gsApi(url, body) {
+  const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body||{})});
+  const d = await r.json().catch(() => ({ok:false, msg:'Réponse invalide'}));
+  if (!d.ok) { toast(d.msg || 'Erreur', 'err'); return null; }
+  return d;
+}
+async function gsLoad() {
+  const d = await (await fetch('/api/sets')).json();
+  GS.sets = d.sets; GS.active = d.active;
+  const a = d.sets.find(x => x.active), chip = document.getElementById('gs-chip');
+  chip.style.display = ''; chip.textContent = a ? a.name : d.active;
+  document.getElementById('gs-list').innerHTML = d.sets.map(x => `
+    <div class="gs-set ${x.active ? 'active' : ''}">
+      <div class="t">${gsEsc(x.name)} ${x.active ? '<span class="gs-badge">actif</span>' : ''}${x.builtin ? '<span class="gs-badge g">origine</span>' : ''}</div>
+      <div class="m">${x.n} gestes × ${x.reps} rép.${x.has_data ? ' · contient des données' : ' · aucune donnée'}</div>
+      <div class="gs-btns">
+        <button class="gs-b pri" data-a="act" data-id="${x.id}" ${x.active ? 'disabled' : ''}>Activer</button>
+        <button class="gs-b" data-a="edit" data-id="${x.id}">${x.builtin ? 'Voir' : 'Modifier'}</button>
+        <button class="gs-b" data-a="dup" data-id="${x.id}">Dupliquer</button>
+        ${x.builtin ? '' : `<button class="gs-b dng" data-a="del" data-id="${x.id}" ${x.active ? 'disabled' : ''}>Supprimer</button>`}
+      </div>
+    </div>`).join('');
+}
+document.getElementById('gs-list').addEventListener('click', async e => {
+  const b = e.target.closest('button[data-a]'); if (!b) return;
+  const id = b.dataset.id, a = b.dataset.a, nm = (GS.sets.find(x => x.id === id) || {}).name;
+  if (a === 'act') {
+    if (!confirm(`Activer « ${nm} » ?\nLa session d'enregistrement repart de zéro (participant 1, premier geste).`)) return;
+    if (await gsApi('/api/sets/activate', {id})) location.reload();
+  } else if (a === 'del') {
+    if (!confirm(`Supprimer le jeu « ${nm} » ?`)) return;
+    if (await gsApi('/api/sets/delete', {id})) { toast('Jeu supprimé', 'ok'); GS.cur = null; document.getElementById('gs-editor').style.display = 'none'; gsLoad(); }
+  } else gsOpen(id, a === 'dup');
+});
+document.getElementById('gs-new').addEventListener('click', () => {
+  GS.cur = {id:null, name:'', reps:5, builtin:false, locked:false, gestures: Array.from({length:4}, () => ({}))};
+  gsRender();
+});
+async function gsOpen(id, dup) {
+  const d = await (await fetch('/api/sets/get?id=' + encodeURIComponent(id))).json();
+  if (!d.ok) return toast(d.msg, 'err');
+  GS.cur = dup ? {id:null, name:d.name + ' (copie)', reps:d.reps, builtin:false, locked:false, gestures:d.gestures}
+               : {id:d.id, name:d.name, reps:d.reps, builtin:d.builtin, locked:d.has_data, gestures:d.gestures, latin_n:d.latin_n};
+  gsRender();
+}
+function gsRender() {
+  const c = GS.cur, ro = c.builtin, ed = document.getElementById('gs-editor');
+  ed.style.display = '';
+  const dis = ro ? 'disabled' : '', lockN = ro || c.locked ? 'disabled' : '';
+  ed.innerHTML = `
+    <h3>${c.id ? (ro ? 'Jeu d\'origine (lecture seule : duplique-le pour le modifier)' : 'Modifier le jeu') : 'Nouveau jeu'}</h3>
+    ${c.locked && !ro ? '<div class="gs-note">Ce jeu contient déjà des enregistrements : le nombre de gestes et de répétitions est verrouillé. Noms, descriptions et vidéos restent modifiables.</div>' : ''}
+    <div class="gs-head">
+      <label class="gs-f">Nom du jeu<input type="text" id="gs-name" value="${gsEsc(c.name)}" maxlength="60" ${dis}></label>
+      <label class="gs-f">Répétitions<input type="number" id="gs-reps" value="${c.reps}" min="1" max="50" ${lockN}></label>
+    </div>
+    <div id="gs-gl">${c.gestures.map((g, i) => gsRow(g, i, ro, c.locked)).join('')}</div>
+    <div class="gs-btns" style="margin-top:12px">
+      ${ro ? '' : `<button class="gs-b" id="gs-add" ${lockN}>+ Ajouter un geste</button>
+      <button class="gs-b" id="gs-cancel" style="margin-left:auto">Annuler</button> <button class="gs-b pri" id="gs-save">Enregistrer</button>`}
+    </div>
+    <div class="ds-note" id="gs-latin-note">${c.id ? 'Carré latin : ' + (c.latin_n || '?') + '×' + (c.latin_n || '?') + '. Le participant Pn suit la ligne n (modulo ' + (c.latin_n || 'n') + '). ' : 'Le carré latin n×n est généré à l\'enregistrement ; chaque geste apparaît une fois à chaque position. '}
+      ${c.id && !ro && !c.locked ? '<a href="#" id="gs-regen" class="link-plot">Régénérer le carré</a>' : ''}
+      ${c.id ? ' <a href="#" id="gs-viewsq" class="link-plot">Voir le carré</a>' : ''}</div>
+    <div id="gs-sq"></div>`;
+  gsWire();
+}
+function gsRow(g, i, ro, locked) {
+  const d = ro ? 'disabled' : '';
+  return `<div class="gs-g" data-i="${i}">
+    <div class="top">
+      <span class="num">${String(i + 1).padStart(2, '0')}</span>
+      <label class="gs-f">Nom du geste<input type="text" data-k="label" value="${gsEsc(g.label)}" placeholder="Sans nom (facultatif)" maxlength="80" ${d}></label>
+      <label class="gs-f">Durée (s, facultatif)<input type="number" data-k="duration" value="${gsEsc(g.duration)}" min="0.5" max="60" step="0.5" placeholder="3" ${d}></label>
+      <button class="gs-x" data-rm="${i}" title="Retirer" style="${ro ? 'visibility:hidden' : ''}" ${ro || locked ? 'disabled' : ''}>✕</button>
+    </div>
+    <div class="more">
+      <label class="gs-f">Description (FR)<textarea data-k="desc_fr" ${d}>${gsEsc(g.desc_fr)}</textarea></label>
+      <label class="gs-f">Description (EN)<textarea data-k="desc_en" ${d}>${gsEsc(g.desc_en)}</textarea></label>
+    </div>
+    <details><summary>Position de départ et vidéo</summary>
+      <div class="more">
+        <label class="gs-f">Position de départ (FR)<textarea data-k="start_fr" ${d}>${gsEsc(g.start_fr)}</textarea></label>
+        <label class="gs-f">Position de départ (EN)<textarea data-k="start_en" ${d}>${gsEsc(g.start_en)}</textarea></label>
+      </div>
+      <div class="gs-vid"><span>Vidéo :</span><b data-vn style="color:var(--text);font-weight:400">${gsEsc(g.video) || 'aucune'}</b>
+        ${ro ? '' : `<input type="file" accept="video/*" data-vf hidden><button class="gs-b" data-vb>Choisir un fichier...</button>`}</div>
+    </details>
+  </div>`;
+}
+function gsCollect() {
+  const c = GS.cur;
+  const gestures = [...document.querySelectorAll('#gs-gl .gs-g')].map((row, i) => {
+    const o = {video: (c.gestures[i] || {}).video || ''};
+    row.querySelectorAll('[data-k]').forEach(el => o[el.dataset.k] = el.value);
+    return o;
+  });
+  return {id:c.id, name:document.getElementById('gs-name').value, reps:+document.getElementById('gs-reps').value, gestures};
+}
+function gsSync() { GS.cur.gestures = gsCollect().gestures; }       // garde la saisie quand on ajoute / retire une ligne
+function gsWire() {
+  const c = GS.cur, g = id => document.getElementById(id);
+  if (g('gs-cancel')) g('gs-cancel').onclick = () => { GS.cur = null; g('gs-editor').style.display = 'none'; };
+  if (g('gs-add')) g('gs-add').onclick = () => { gsSync(); c.gestures.push({}); const n = g('gs-name').value, r = g('gs-reps').value; gsRender(); g('gs-name').value = n; g('gs-reps').value = r; };
+  if (g('gs-save')) g('gs-save').onclick = async () => {
+    const d = await gsApi('/api/sets/save', gsCollect());
+    if (!d) return;
+    toast('Jeu enregistré', 'ok'); await gsLoad(); gsOpen(d.id, false);
+  };
+  document.querySelectorAll('#gs-gl [data-rm]').forEach(b => b.onclick = () => {
+    gsSync(); const n = g('gs-name').value, r = g('gs-reps').value;
+    c.gestures.splice(+b.dataset.rm, 1); gsRender(); g('gs-name').value = n; g('gs-reps').value = r;
+  });
+  document.querySelectorAll('#gs-gl [data-vb]').forEach(b => b.onclick = () => b.parentNode.querySelector('[data-vf]').click());
+  document.querySelectorAll('#gs-gl [data-vf]').forEach(inp => inp.onchange = async () => {
+    const f = inp.files[0]; if (!f) return;
+    const fd = new FormData(); fd.append('file', f);
+    const d = await (await fetch('/api/sets/video', {method:'POST', body:fd})).json();
+    if (!d.ok) return toast(d.msg, 'err');
+    const i = +inp.closest('.gs-g').dataset.i; c.gestures[i] = c.gestures[i] || {}; c.gestures[i].video = d.video;
+    inp.parentNode.querySelector('[data-vn]').textContent = d.video; toast('Vidéo ajoutée, pense à enregistrer', 'ok');
+  });
+  if (g('gs-regen')) g('gs-regen').onclick = async e => {
+    e.preventDefault(); if (!confirm('Générer un nouveau carré latin pour ce jeu ?')) return;
+    if (await gsApi('/api/sets/latin', {id:c.id})) { toast('Nouveau carré généré', 'ok'); g('gs-sq').innerHTML = ''; }
+  };
+  if (g('gs-viewsq')) g('gs-viewsq').onclick = async e => {
+    e.preventDefault();
+    const d = await (await fetch('/api/sets/latin_view?id=' + encodeURIComponent(c.id))).json(); if (!d.ok) return;
+    const num = x => x.replace('Gesture ', '');
+    g('gs-sq').innerHTML = `<div style="overflow:auto;max-height:300px;margin-top:8px"><table class="ds-table" style="font-size:.64rem"><tr><th>Participant</th>${d.square[0].map((_, i) => `<th>#${i + 1}</th>`).join('')}</tr>` +
+      d.square.map((r, i) => `<tr><td>P${String(i + 1).padStart(2, '0')}</td>${r.map(x => `<td>${num(x)}</td>`).join('')}</tr>`).join('') + '</table></div>';
+  };
+}
+gsLoad();
+</script>
+</body>
+</html>

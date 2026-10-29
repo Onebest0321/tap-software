@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Classifieur — TapStrap</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;800&display=swap');
+  *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+  :root { --bg:#0b0d12; --surface:#111420; --panel:#161925; --border:#1e2435; --accent:#5b8dee; --green:#4fffb0;
+          --red:#ff4f7b; --warn:#f6c90e; --text:#e2e8f0; --muted:#7d8aa3; --mono:'DM Mono',monospace; --disp:'Syne',sans-serif; }
+  body { background:var(--bg); color:var(--text); font-family:var(--mono); font-size:.82rem; min-height:100vh; }
+  header { display:flex; align-items:center; justify-content:space-between; padding:0 24px; height:52px; background:var(--surface); border-bottom:1px solid var(--border); }
+  header h1 { font-family:var(--disp); font-size:1rem; font-weight:800; color:var(--accent); }
+  .nav a { color:var(--muted); text-decoration:none; font-size:.72rem; letter-spacing:.08em; margin-left:16px; }
+  .nav a.active, .nav a:hover { color:var(--text); }
+  main { display:grid; grid-template-columns:minmax(380px,430px) 1fr; gap:16px; padding:16px 20px; align-items:start; }
+  @media (max-width:1100px){ main{grid-template-columns:1fr;} }
+  [hidden] { display:none !important; }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:14px 16px; margin-bottom:14px; }
+  .card h3 { font-size:.64rem; letter-spacing:.12em; text-transform:uppercase; color:#9aa6bd; font-weight:400; margin-bottom:10px; display:flex; align-items:center; gap:8px; }
+  .card h3 .sel { color:var(--green); letter-spacing:.04em; text-transform:none; font-size:.74rem; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
+  .lab { font-size:.62rem; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); min-width:92px; }
+  input, select, textarea { background:var(--bg); border:1px solid var(--border); color:var(--text); font-family:var(--mono); font-size:.78rem; padding:5px 8px; border-radius:5px; }
+  select { max-width:100%; min-width:0; text-overflow:ellipsis; }
+  input[type=number] { width:78px; } input:focus, select:focus { outline:none; border-color:var(--accent); }
+  input[type=checkbox] { accent-color:var(--accent); }
+  input:disabled, select:disabled { opacity:.4; }
+  button { font-family:var(--mono); cursor:pointer; }
+  .btn { font-size:.72rem; letter-spacing:.06em; text-transform:uppercase; padding:7px 14px; border-radius:6px; border:1px solid var(--accent); background:rgba(91,141,238,.1); color:var(--accent); }
+  .btn:hover:not(:disabled) { background:rgba(91,141,238,.22); } .btn:disabled { opacity:.3; cursor:not-allowed; }
+  .btn.go { border-color:var(--green); color:var(--green); background:rgba(79,255,176,.1); } .btn.go:hover:not(:disabled){ background:rgba(79,255,176,.2); }
+  .btn.stop { border-color:var(--red); color:var(--red); background:rgba(255,79,123,.08); }
+  .btn.ghost { border-color:var(--border); color:var(--text); background:var(--panel); padding:5px 10px; }
+  .seg { display:inline-flex; border:1px solid var(--border); border-radius:6px; overflow:hidden; }
+  .seg button { background:transparent; border:none; color:var(--muted); padding:7px 14px; font-size:.74rem; }
+  .seg button.on { background:rgba(91,141,238,.28); color:#fff; } .seg button:disabled { opacity:.35; cursor:not-allowed; }
+  .help { font-size:.68rem; color:var(--muted); line-height:1.5; margin:4px 0 8px; }
+  .chips { display:flex; flex-wrap:wrap; gap:5px; max-height:92px; overflow:auto; }
+  .tg { font-size:.68rem; padding:3px 9px; border-radius:12px; cursor:pointer; border:1px solid var(--border); background:var(--bg); color:var(--muted); user-select:none; }
+  .tg.on { color:#fff; border-color:#7ea4ff; background:rgba(91,141,238,.28); }
+  .sub { font-size:.62rem; letter-spacing:.1em; text-transform:uppercase; color:#9aa6bd; margin:14px 0 8px; padding-top:12px; border-top:1px solid var(--border); display:flex; align-items:center; gap:8px; }
+  .sub:first-child { border:none; padding:0; margin-top:0; }
+
+  /* ── classifieurs (colonne droite) ── */
+  .fams { display:grid; grid-template-columns:repeat(auto-fill,minmax(168px,1fr)); gap:10px; }
+  .fam { position:relative; text-align:left; background:var(--bg); border:1px solid var(--border); border-top:4px solid var(--fc,#5b8dee); border-radius:9px; padding:11px 12px 12px; color:var(--text); transition:transform .12s, border-color .12s, background .12s; }
+  .fam:hover { transform:translateY(-2px); border-color:var(--fc,#5b8dee); }
+  .fam.on { background:rgba(91,141,238,.12); border-color:var(--fc,#5b8dee); box-shadow:0 0 0 1px var(--fc,#5b8dee) inset; }
+  .fam b { display:block; font-family:var(--disp); font-size:1rem; font-weight:800; color:var(--fc,#5b8dee); }
+  .fam .s { font-size:.62rem; letter-spacing:.06em; text-transform:uppercase; color:#9aa6bd; margin:1px 0 6px; display:block; }
+  .fam .d { font-size:.68rem; color:var(--muted); line-height:1.45; display:block; }
+  .fam .tick { position:absolute; top:8px; right:10px; color:var(--green); font-size:.8rem; display:none; } .fam.on .tick { display:block; }
+  .fam.add { border-style:dashed; border-top-style:dashed; --fc:#7d8aa3; display:flex; align-items:center; justify-content:center; text-align:center; min-height:84px; color:var(--muted); }
+  .fam.add b { color:var(--muted); font-size:.85rem; }
+  .fam .tags { margin-top:7px; display:flex; flex-wrap:wrap; gap:4px; } .fam .tags i { font-style:normal; font-size:.58rem; padding:1px 6px; border-radius:8px; background:rgba(255,255,255,.06); color:#9aa6bd; }
+  .c-cnn { --fc:#7ea4ff; } .c-rnn { --fc:#c084fc; } .c-dense { --fc:#4fffb0; } .c-shape { --fc:#f6c90e; } .c-reg { --fc:#ff8fab; } .c-pre { --fc:#2dd4bf; }
+  .imp { border:1px dashed var(--border); border-radius:8px; padding:12px; margin-top:12px; background:var(--bg); }
+
+  /* ── blocs « Scratch » ── */
+  .palette { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
+  .pal { padding:5px 10px; border-radius:6px; font-size:.7rem; cursor:pointer; border:1px solid transparent; color:#0b0d12; font-weight:500; background:var(--fc); }
+  .pal:hover { filter:brightness(1.15); transform:translateY(-1px); }
+  #stack { display:flex; flex-direction:column; min-height:60px; }
+  .blk { position:relative; border-radius:8px; padding:7px 10px 7px 12px; margin-bottom:5px; color:#0b0d12; display:flex; align-items:center; gap:8px; flex-wrap:wrap; border-left:6px solid rgba(0,0,0,.28); background:var(--fc); }
+  .blk::after { content:''; position:absolute; left:18px; bottom:-6px; width:22px; height:6px; background:inherit; border-radius:0 0 5px 5px; z-index:1; }
+  .blk.fixed::after, .blk:last-child::after { display:none; }
+  .blk.c-io { --fc:#4a5568; color:#e2e8f0; }
+  .blk .nm { font-weight:500; min-width:92px; cursor:grab; } .blk.over { outline:2px dashed #fff; }
+  .blk label { font-size:.64rem; display:flex; align-items:center; gap:4px; }
+  .blk input, .blk select { background:rgba(255,255,255,.88); color:#0b0d12; border:none; padding:2px 5px; font-size:.72rem; }
+  .blk input[type=number] { width:58px; } .blk input[type=checkbox] { width:auto; }
+  .blk .out { margin-left:auto; font-size:.62rem; background:rgba(0,0,0,.22); color:#fff; padding:2px 7px; border-radius:9px; white-space:nowrap; }
+  .blk .x { background:rgba(0,0,0,.25); border:none; color:#fff; width:20px; height:20px; border-radius:50%; font-size:.7rem; }
+  .verdict { font-size:.72rem; padding:8px 10px; border-radius:6px; margin-top:6px; border:1px solid var(--border); }
+  .verdict.ok { border-color:var(--green); color:var(--green); } .verdict.err { border-color:var(--red); color:#ff8fab; }
+
+  /* ── résultats ── */
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:10px; margin-bottom:12px; }
+  .tile { border-radius:9px; padding:11px 13px; background:var(--bg); border:1px solid var(--border); border-left:4px solid var(--tc,#5b8dee); }
+  .tile b { display:block; font-family:var(--disp); font-size:1.5rem; color:var(--tc,#5b8dee); line-height:1.1; }
+  .tile span { font-size:.62rem; letter-spacing:.06em; text-transform:uppercase; color:#9aa6bd; }
+  table.t { width:100%; border-collapse:collapse; font-size:.76rem; } table.t th { text-align:left; font-weight:400; font-size:.62rem; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); padding:5px 8px; border-bottom:1px solid var(--border); }
+  table.t td { padding:5px 8px; border-bottom:1px solid var(--border); } table.t .num { text-align:right; } table.t tr.best td { background:rgba(79,255,176,.08); }
+  .bar { display:inline-block; height:7px; border-radius:3px; vertical-align:middle; margin-right:7px; }
+  .prog { height:9px; background:var(--bg); border:1px solid var(--border); border-radius:5px; overflow:hidden; margin:6px 0; } .prog>div { height:100%; width:0; background:var(--accent); transition:width .3s; }
+  .cm-wrap { overflow:auto; max-height:520px; border:1px solid var(--border); border-radius:8px; }
+  table.cm { border-collapse:separate; border-spacing:1px; font-size:.58rem; } table.cm th { position:sticky; top:0; background:var(--surface); color:var(--muted); font-weight:400; padding:3px; }
+  table.cm th.r { left:0; top:auto; position:sticky; z-index:1; } table.cm td { width:22px; height:20px; text-align:center; color:#0b0d12; border-radius:3px; }
+  .chart-h { height:220px; position:relative; }
+  .toast { position:fixed; bottom:20px; right:20px; background:var(--panel); border:1px solid var(--border); border-radius:7px; padding:9px 15px; opacity:0; transition:opacity .3s; pointer-events:none; z-index:99; max-width:420px; }
+  .toast.show { opacity:1; } .toast.err { border-color:var(--red); color:var(--red); } .toast.ok { border-color:var(--green); color:var(--green); }
+  .warn { border:1px solid var(--warn); color:var(--warn); border-radius:6px; padding:8px 10px; margin-bottom:12px; font-size:.74rem; display:none; }
+  .note { border:1px solid var(--warn); color:var(--warn); border-radius:6px; padding:8px 10px; margin:0 0 12px; font-size:.72rem; line-height:1.5; }
+  .hint { text-align:center; padding:26px 14px; color:var(--muted); line-height:1.7; border-style:dashed; }
+  .hint b { display:block; font-family:var(--disp); font-size:1.05rem; color:var(--text); margin-bottom:4px; }
+  .slide { animation:slide .25s ease-out; } @keyframes slide { from{opacity:0; transform:translateX(18px);} to{opacity:1; transform:none;} }
+  .pred-bar { height:16px; border-radius:3px; background:var(--accent); display:inline-block; vertical-align:middle; }
+  .kv { display:grid; grid-template-columns:auto 1fr; gap:4px 14px; font-size:.74rem; } .kv span:nth-child(odd) { color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <div style="display:flex;align-items:center;gap:20px">
+    <h1>Classifieur</h1>
+    <nav class="nav"><a href="/">Participant</a><a href="/examiner">Examinateur</a><a href="/classifier" class="active">Classifieur</a></nav>
+  </div>
+  <div id="hdr" style="font-size:.7rem;color:var(--muted)">—</div>
+</header>
+
+<main>
+<!-- ═════════ COLONNE GAUCHE : validation, données, puis paramètres d'entraînement du classifieur choisi ═════════ -->
+<div>
+  <div class="warn" id="warn"></div>
+
+  <div class="card">
+    <h3>1 · Scénario de validation</h3>
+    <div class="seg" id="scn"><button data-v="louo" class="on">Leave-One-User-Out</button><button data-v="loro">Leave-One-Repetition-Out</button></div>
+    <div class="help" id="scn-help"></div>
+  </div>
+
+  <div class="card">
+    <h3>2 · Données &amp; normalisation</h3>
+    <div class="row"><span class="lab">Capteurs</span><select id="sensors"></select></div>
+    <div class="row"><span class="lab">Pas de temps</span><input type="number" id="T" min="16" max="1000" value="100"><span class="help" style="margin:0">chaque répétition est ré-échantillonnée à N points</span></div>
+    <div class="row"><span class="lab">Normalisation</span><select id="norm" style="flex:1"></select></div>
+    <div class="help" id="norm-help"></div>
+    <details><summary style="cursor:pointer;color:var(--accent);font-size:.72rem;margin:6px 0">Filtrer gestes / participants <span id="flt-n" style="color:var(--muted)"></span></summary>
+      <div class="lab" style="margin:8px 0 4px">Gestes <a href="#" id="g-all" style="color:var(--accent)">tous</a> · <a href="#" id="g-none" style="color:var(--accent)">aucun</a></div><div class="chips" id="g-chips"></div>
+      <div class="lab" style="margin:8px 0 4px">Participants <a href="#" id="p-all" style="color:var(--accent)">tous</a> · <a href="#" id="p-none" style="color:var(--accent)">aucun</a></div><div class="chips" id="p-chips"></div>
+      <div class="help">Aucun filtre actif = tout le dataset nettoyé. Avec un modèle pré-entraîné, ce sont ses propres gestes qui sont utilisés.</div>
+    </details>
+  </div>
+
+  <!-- tant qu'aucun classifieur n'est choisi -->
+  <div class="card hint" id="hint"><b>Choisis un classifieur →</b>Les paramètres d'entraînement apparaîtront ici dès que tu auras cliqué sur un classifieur dans le bloc de droite.</div>
+
+  <!-- apparaît après le choix du classifieur -->
+  <div class="card slide" id="train-card" hidden>
+    <h3>3 · Entraînement <span class="sel" id="tr-sel"></span></h3>
+
+    <div id="mode-wrap" hidden>
+      <div class="seg" id="mode"><button data-v="evaluate" class="on">Évaluer tel quel</button><button data-v="finetune">Affiner (fine-tuning)</button></div>
+      <div class="help" id="mode-help"></div>
+    </div>
+
+    <div id="hp-wrap">
+      <div class="sub">Optimisation</div>
+      <div class="row"><span class="lab">Epochs</span><input type="number" id="epochs" value="30" min="1"><span class="lab" style="min-width:60px">Batch</span><input type="number" id="batch" value="32" min="2"></div>
+      <div class="row"><span class="lab">Optimiseur</span><select id="optimizer"></select></div>
+      <div class="row"><span class="lab">Learning rate</span><input type="number" id="lr" value="0.001" step="any" style="width:90px"><span class="lab" style="min-width:60px">Weight decay</span><input type="number" id="wd" value="0.0001" step="any" style="width:90px"></div>
+      <div class="row"><span class="lab">Scheduler</span><select id="scheduler" style="flex:1"></select></div>
+      <div class="help" id="lr-help">Le learning rate est le réglage le plus influent. Trop haut : la loss oscille ; trop bas : l'apprentissage stagne.</div>
+
+      <div class="sub">Régularisation</div>
+      <div class="row"><label><input type="checkbox" id="dp-on"> Forcer le dropout à</label><input type="number" id="dp" value="0.3" min="0" max="0.95" step="0.05" disabled><span class="help" style="margin:0">tous les blocs Dropout</span></div>
+      <div class="row"><span class="lab">Bruit gaussien</span><input type="number" id="noise" value="0" min="0" step="0.01"><span class="help" style="margin:0">ajouté à l'entrée pendant l'apprentissage (données normalisées)</span></div>
+      <div class="row"><label><input type="checkbox" id="es"> Early stopping</label><span class="lab" style="min-width:60px">Patience</span><input type="number" id="pat" value="8" min="1" disabled></div>
+      <div class="help">L'early stopping réserve 20 % du train (des participants / répétitions entiers) pour surveiller la validation et restaure la meilleure époque. Le test du pli n'est jamais regardé.</div>
+      <div class="row"><span class="lab">Graine</span><input type="number" id="seed" value="0"></div>
+
+      <div class="sub">Recherche d'hyperparamètres</div>
+      <div class="row"><label><input type="checkbox" id="tu-on"> Recherche automatique <span style="color:var(--muted)">(aléatoire, façon Keras Tuner)</span></label></div>
+      <div id="tu-body" hidden>
+        <div class="row"><span class="lab">Essais</span><input type="number" id="tu-n" value="8" min="1" max="100"><span class="lab" style="min-width:70px">Epochs / essai</span><input type="number" id="tu-ep" value="10" min="1"></div>
+        <div class="row"><span class="lab">Portée</span><select id="tu-scope" style="flex:1"><option value="once">Une seule fois (1ᵉʳ pli) — rapide</option><option value="fold">À chaque pli — rigoureux, lent</option></select></div>
+        <div class="help">Chaque essai s'entraîne sur le train du pli et se note sur une validation interne (jamais le test). L'essai 0 reprend tes réglages manuels : la recherche ne peut donc pas faire pire que toi en validation.</div>
+        <div class="row"><label style="min-width:120px"><input type="checkbox" id="tu-lr" checked> learning rate</label><input type="number" id="tu-lr-lo" value="0.0001" step="any" style="width:84px">–<input type="number" id="tu-lr-hi" value="0.01" step="any" style="width:84px"><span class="help" style="margin:0">log</span></div>
+        <div class="row"><label style="min-width:120px"><input type="checkbox" id="tu-wd"> weight decay</label><input type="number" id="tu-wd-lo" value="0.000001" step="any" style="width:84px">–<input type="number" id="tu-wd-hi" value="0.01" step="any" style="width:84px"><span class="help" style="margin:0">log</span></div>
+        <div class="row"><label style="min-width:120px"><input type="checkbox" id="tu-dp"> dropout</label><input type="number" id="tu-dp-lo" value="0.1" step="0.05" style="width:84px">–<input type="number" id="tu-dp-hi" value="0.5" step="0.05" style="width:84px"></div>
+        <div class="row"><label style="min-width:120px"><input type="checkbox" id="tu-bs"> batch parmi</label><div class="chips" id="tu-bs-chips"></div></div>
+      </div>
+
+      <div class="sub">Conserver le modèle</div>
+      <div class="row"><label><input type="checkbox" id="sv"> Entraîner un modèle final sur toutes les données et l'enregistrer</label></div>
+      <div class="row" id="sv-row" hidden><span class="lab">Nom</span><input type="text" id="sv-name" placeholder="(automatique)" style="flex:1"></div>
+      <div class="help">Le score affiché reste celui de la validation croisée ; le modèle final sert ensuite à reconnaître des gestes (carte « Reconnaître un geste »).</div>
+    </div>
+
+    <div class="row" style="margin-top:10px"><button class="btn go" id="run">▶ Lancer</button><button class="btn stop" id="cancel" disabled>■ Annuler</button><span class="help" id="est" style="margin:0"></span></div>
+    <div class="help">Un entraînement est refusé pendant un essai (et l'inverse), pour ne pas gêner la réception Bluetooth. Les statistiques de normalisation sont calculées sur le train de chaque pli uniquement.</div>
+  </div>
+</div>
+
+<!-- ═════════ COLONNE DROITE : classifieurs, architecture, progression, résultats ═════════ -->
+<div>
+  <div class="card">
+    <h3>Classifieurs</h3>
+    <div class="fams" id="fams"></div>
+    <div class="sub" style="margin-top:16px">Mes modèles (importés ou enregistrés)</div>
+    <div class="fams" id="pres"></div>
+    <div class="imp" id="imp" hidden>
+      <div class="row"><span class="lab">Fichier</span><input type="file" id="imp-file" accept=".pt,.pth,.keras,.h5" style="flex:1"></div>
+      <div class="row"><span class="lab">Nom</span><input type="text" id="imp-name" placeholder="(nom du fichier)" style="flex:1"></div>
+      <div id="imp-keras" hidden>
+        <div class="help" style="margin-top:0">Ces informations ne sont pas dans le fichier : indique comment le modèle a été entraîné. Elles sont ignorées pour un export de cette application.</div>
+        <div class="row"><span class="lab">Capteurs</span><select id="imp-sensors"></select><span class="lab" style="min-width:70px">Pas de temps</span><input type="number" id="imp-T" value="100" min="16"></div>
+        <div class="row"><span class="lab">Normalisation</span><select id="imp-norm" style="flex:1"><option value="none">Aucune</option><option value="per_trial">Par répétition</option><option value="per_participant">Par participant</option></select></div>
+        <div class="row"><span class="lab">Classes</span><input type="text" id="imp-classes" placeholder="Gesture_01, Gesture_02, …  (vide = Gesture_01…N dans l'ordre)" style="flex:1"></div>
+      </div>
+      <div class="help"><b>.pt exporté par cette appli</b> : tout est dans le fichier, poids lus sans exécuter de code (affinage possible). <b>.pt TorchScript</b> (<code>torch.jit.save</code>) : aucune architecture à décrire. <b>.keras / .h5</b> : nécessite TensorFlow sur le serveur. Un simple <i>state_dict</i> PyTorch ne suffit pas (architecture inconnue). Les modèles TorchScript et Keras sont évaluables mais pas affinables, et peuvent exécuter du code : n'importe que des fichiers dont tu es sûr de la source.</div>
+      <div class="row"><button class="btn go" id="imp-go">Importer</button><button class="btn ghost" id="imp-x">Annuler</button></div>
+    </div>
+  </div>
+
+  <div class="card slide" id="arch-card" hidden>
+    <h3>Architecture <span class="sel" id="arch-sel"></span></h3>
+    <div class="palette" id="palette"></div>
+    <div class="help">Clique un bloc pour l'ajouter · glisse le nom d'un bloc pour le déplacer · la couche de sortie (Dense + softmax) est ajoutée automatiquement.</div>
+    <div id="stack"></div>
+    <div class="verdict" id="verdict">—</div>
+    <div class="row" style="margin-top:8px"><button class="btn ghost" id="b-reset">Réinitialiser</button><button class="btn ghost" id="b-clear">Vider</button><button class="btn ghost" id="b-save">Enregistrer</button><button class="btn ghost" id="b-load">Charger</button></div>
+  </div>
+
+  <div class="card slide" id="pre-card" hidden>
+    <h3>Modèle choisi <span class="sel" id="pre-sel"></span></h3>
+    <div class="kv" id="pre-kv"></div>
+    <div class="row" style="margin-top:12px"><a class="btn ghost" id="pre-dl" style="text-decoration:none">Télécharger</a><button class="btn ghost" id="pre-del">Supprimer</button></div>
+  </div>
+
+  <div class="card">
+    <h3>Progression</h3>
+    <div id="p-stage" style="font-family:var(--disp);font-size:1.05rem">Inactif</div>
+    <div class="prog"><div id="p-bar"></div></div>
+    <div class="help" id="p-msg" style="margin:0"></div>
+  </div>
+
+  <div id="results" style="display:none">
+    <div id="r-note"></div>
+    <div class="tiles" id="tiles"></div>
+    <div class="card" id="loss-card"><h3>Courbes de loss d'entraînement (un tracé par pli)</h3><div class="chart-h"><canvas id="loss"></canvas></div></div>
+    <div class="card" id="tune-card" hidden><h3>Recherche d'hyperparamètres</h3><div id="tune" style="overflow:auto;max-height:340px"></div></div>
+    <div class="card"><h3>Résultats par pli</h3><div id="folds" style="overflow:auto;max-height:340px"></div></div>
+    <div class="card"><h3>Matrice de confusion (tous plis cumulés)</h3><div class="cm-wrap"><table class="cm" id="cm"></table></div>
+      <div class="help">Lignes = geste réel · colonnes = geste prédit. Survol = valeurs.</div></div>
+    <div class="card"><h3>Exactitude par geste</h3><div id="pcls"></div></div>
+  </div>
+
+  <div class="card">
+    <h3>Reconnaître un geste</h3>
+    <div class="help">Choisis un modèle enregistré ou importé, puis une répétition nettoyée du dataset : le modèle donne son geste le plus probable.</div>
+    <div class="row"><span class="lab">Modèle</span><select id="pr-model" style="flex:1"></select></div>
+    <div class="row"><span class="lab">Participant</span><select id="pr-p"></select><span class="lab" style="min-width:50px">Geste</span><select id="pr-g"></select><span class="lab" style="min-width:40px">Rép.</span><select id="pr-f"></select></div>
+    <div class="row"><button class="btn go" id="pr-go">Reconnaître</button></div>
+    <div id="pr-out"></div>
+  </div>
+
+  <div class="card"><h3>Entraînements précédents <button class="btn ghost" id="runs-refresh" style="margin-left:auto">↻</button></h3><div id="runs"></div></div>
+</div>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = t => String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function toast(m, t='ok'){ const e=$('toast'); e.textContent=m; e.className='toast show '+t; setTimeout(()=>e.classList.remove('show'),3200); }
+const post = (url, body) => fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body||{})}).then(r=>r.json());
+const S = { meta:null, scenario:'louo', sel:null, blocks:[], gs:new Set(), ps:new Set(), bs:new Set([16,32,64]), mode:'train',
+            running:false, chart:null, validating:null, layers:[], tree:null };
+const SCN_HELP = {
+  louo:'Chaque pli met un participant de côté (test) et entraîne sur tous les autres. Mesure la généralisation à une personne jamais vue (user-independent).',
+  loro:'Chaque pli met de côté une répétition (rep01…rep05) pour TOUS les participants et entraîne sur les autres. Mesure la généralisation sur des essais jamais vus de personnes déjà vues (user-dependent).' };
+const NORM_HELP = {
+  none:'Valeurs brutes.',
+  zscore_train:'(x − moyenne) / écart-type par canal, calculés sur le train du pli seulement. Le choix standard.',
+  minmax_train:'Ramène chaque canal dans [0,1] avec min/max du train. Sensible aux valeurs extrêmes.',
+  robust_train:'(x − médiane) / IQR par canal, stats du train. Résiste aux valeurs aberrantes.',
+  per_participant:'Chaque personne est centrée-réduite avec ses propres statistiques (sans utiliser les étiquettes). Gomme les différences morphologiques — utile en leave-one-user-out.',
+  per_trial:'Chaque répétition est centrée-réduite isolément (par canal, sur le temps). Supprime l\'amplitude absolue : attention, elle peut contenir de l\'information utile.' };
+const MODE_HELP = {
+  evaluate:'Aucun entraînement : le modèle est appliqué tel quel aux données choisies, avec SA normalisation et SES réglages. Les « plis » ne servent qu\'à ventiler le score par participant / répétition.',
+  finetune:'Chaque pli repart des poids du modèle puis continue l\'apprentissage sur le train du pli (transfer learning), et est testé sur le pli de côté.' };
+const FAM_TAGS = { dense:['rapide'], lstm:['séquence','mémoire'], cnn:['motifs locaux'], cnn_lstm:['hybride'] };
+
+// ── init ──
+async function init() {
+  const m = S.meta = await (await fetch('/api/clf/meta')).json();
+  $('sensors').innerHTML = $('imp-sensors').innerHTML = Object.entries(m.sensors).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
+  $('norm').innerHTML = Object.entries(m.norms).map(([k,v])=>`<option value="${k}" ${k==='zscore_train'?'selected':''}>${v}</option>`).join('');
+  $('optimizer').innerHTML = Object.entries(m.optims).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
+  $('scheduler').innerHTML = Object.entries(m.scheds).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
+  $('palette').innerHTML = Object.entries(m.blocks).map(([k,b])=>`<span class="pal c-${b.cat}" data-add="${k}">+ ${b.label}</span>`).join('');
+  $('tu-bs-chips').innerHTML = [8,16,32,64,128,256].map(v=>`<span class="tg ${S.bs.has(v)?'on':''}" data-v="${v}">${v}</span>`).join('');
+  m.gestures.forEach(g=>S.gs.add(g)); m.participants.forEach(p=>S.ps.add(p));
+  renderChips(); renderFams(); scnUpdate(); normUpdate();
+  const w = $('warn');
+  if (!m.torch) { w.style.display='block'; w.textContent = 'PyTorch n’est pas installé sur le serveur : pip install torch  (' + m.torch_error + ')'; }
+  else if (!m.files) { w.style.display='block'; w.textContent = 'Aucun fichier nettoyé dans data_clean/ — lancer d’abord le prétraitement (Examinateur → Dataset).'; }
+  $('hdr').textContent = `${m.participants.length} participants · ${m.gestures.length} gestes · ${m.files} fichiers nettoyés · ${m.torch ? (m.cuda ? 'GPU' : 'CPU ' + m.cpus + ' cœurs') : 'torch absent'}`;
+  loadRuns(); loadTree(); renderPredModels(); poll();
+}
+const fill = b => ({...JSON.parse(JSON.stringify(S.meta.blocks[b.type].params)), ...b});
+
+// ── classifieurs (bloc de droite) ──
+function renderFams() {
+  const m = S.meta, cur = S.sel;
+  $('fams').innerHTML = m.family_order.map(k => [k, m.families[k]]).map(([k,f]) =>
+    `<button class="fam c-${f.cat} ${cur&&cur.type==='family'&&cur.key===k?'on':''}" data-fam="${k}"><span class="tick">✔</span>
+       <b>${esc(f.label)}</b><span class="s">${esc(f.sub)}</span><span class="d">${esc(f.desc)}</span>
+       <span class="tags">${(FAM_TAGS[k]||[]).map(t=>`<i>${t}</i>`).join('')}</span></button>`).join('')
+    + `<button class="fam c-pre ${$('imp').hidden?'':'on'}" id="pre-add" style="border-style:dashed"><span class="tick">✔</span>
+       <b>Personnalisé</b><span class="s">Importe ton modèle</span>
+       <span class="d">Utilise un modèle entraîné ailleurs (.pt, TorchScript, Keras) : tu ne construis rien ici, tu l'importes puis tu l'évalues ou tu reconnais des gestes.</span>
+       <span class="tags"><i>.pt</i><i>TorchScript</i><i>.keras / .h5</i></span></button>`;
+  $('pres').innerHTML = m.models.map(x =>
+    `<button class="fam c-pre ${cur&&cur.type==='pre'&&cur.name===x.name?'on':''}" data-pre="${esc(x.name)}"><span class="tick">✔</span>
+       <b>${esc(x.name)}</b><span class="s">${{keras:'Keras', torchscript:'TorchScript', torch:'PyTorch'}[x.kind]} · ${esc(x.source||'')}</span>
+       <span class="d">${x.n_classes} gestes · ${x.T??'T?'}×${x.n_channels??'?'}${x.cv?` · CV ${(100*x.cv.acc).toFixed(0)} %`:''}</span></button>`).join('')
+    || '<div class="help" style="grid-column:1/-1">Aucun modèle pour l\'instant — clique sur « Personnalisé » pour importer le tien, ou enregistre un modèle entraîné ici.</div>';
+}
+$('fams').addEventListener('click', e => { const f=e.target.closest('[data-fam]'); if(f) pickFamily(f.dataset.fam); });
+$('pres').addEventListener('click', e => { const f=e.target.closest('[data-pre]'); if(f) pickPre(f.dataset.pre); });
+$('fams').addEventListener('click', e => { if (e.target.closest('#pre-add')) { $('imp').hidden = !$('imp').hidden; renderFams(); if (!$('imp').hidden) $('imp').scrollIntoView({behavior:'smooth', block:'nearest'}); } });
+
+function showTrain(label) {
+  $('hint').hidden = true;
+  const c = $('train-card'); if (c.hidden) { c.hidden = false; } else { c.classList.remove('slide'); void c.offsetWidth; c.classList.add('slide'); }
+  $('tr-sel').textContent = '· ' + label;
+  estimate();
+}
+function pickFamily(key) {
+  const f = S.meta.families[key]; S.sel = {type:'family', key}; S.mode = 'train';
+  S.blocks = JSON.parse(JSON.stringify(f.blocks)).map(fill);
+  $('epochs').value = f.hp.epochs; $('batch').value = f.hp.batch; $('lr').value = f.hp.lr;
+  $('mode-wrap').hidden = true; $('hp-wrap').hidden = false; $('pre-card').hidden = true; $('arch-card').hidden = false;
+  $('arch-sel').textContent = '· ' + f.label; $('sensors').disabled = $('T').disabled = false;
+  renderFams(); renderStack(); validate(); showTrain(f.label);
+}
+function pickPre(name) {
+  const x = S.meta.models.find(m => m.name === name); if (!x) return;
+  S.sel = {type:'pre', name, kind:x.kind}; S.mode = 'evaluate';
+  $('arch-card').hidden = true; $('pre-card').hidden = false;
+  $('pre-sel').textContent = '· ' + name;
+  $('pre-kv').innerHTML = [['Moteur', {keras:'Keras (TensorFlow)', torchscript:'PyTorch · TorchScript', torch:'PyTorch'}[x.kind]], ['Origine', x.source||'—'], ['Gestes', x.n_classes],
+    ['Entrée', `${x.T??'?'} pas × ${x.n_channels??'?'} canaux`], ['Capteurs', S.meta.sensors[x.sensors]||x.sensors], ['Normalisation', S.meta.norms[x.norm]||x.norm],
+    ['Entraîné sur', x.train_participants ? x.train_participants.length + ' participants (' + x.train_participants.slice(0,6).join(', ') + (x.train_participants.length>6?'…':'') + ')' : 'inconnu'],
+    ['Score CV', x.cv ? `${(100*x.cv.acc).toFixed(1)} % ± ${(100*x.cv.std).toFixed(1)} (${x.cv.scenario.toUpperCase()})` : '—']]
+    .map(([a,b])=>`<span>${a}</span><span>${esc(b)}</span>`).join('');
+  $('pre-dl').href = '/api/clf/models/download?name=' + encodeURIComponent(name);
+  // les réglages de données sont imposés par le modèle
+  $('sensors').value = x.sensors; $('sensors').disabled = true; if (x.T) { $('T').value = x.T; } $('T').disabled = true;
+  if (x.norm) { $('norm').value = x.norm; normUpdate(); }
+  $('mode-wrap').hidden = false;
+  document.querySelectorAll('#mode button').forEach(b => { b.disabled = (b.dataset.v==='finetune' && x.kind!=='torch'); });
+  setMode('evaluate'); renderFams(); showTrain(name);
+}
+function setMode(v) {
+  S.mode = v; document.querySelectorAll('#mode button').forEach(b=>b.classList.toggle('on', b.dataset.v===v));
+  $('mode-help').textContent = MODE_HELP[v]; $('hp-wrap').hidden = (v==='evaluate'); estimate();
+}
+$('mode').addEventListener('click', e => { const b=e.target.closest('button'); if(b && !b.disabled) setMode(b.dataset.v); });
+
+// ── import ──
+$('imp-file').addEventListener('change', () => { $('imp-keras').hidden = !$('imp-file').files[0]; });
+$('imp-x').addEventListener('click', () => { $('imp').hidden = true; renderFams(); });
+$('imp-go').addEventListener('click', async () => {
+  const f = $('imp-file').files[0]; if (!f) return toast('Choisis un fichier', 'err');
+  const fd = new FormData(); fd.append('file', f); fd.append('name', $('imp-name').value); fd.append('sensors', $('imp-sensors').value);
+  fd.append('norm', $('imp-norm').value); fd.append('classes', $('imp-classes').value); fd.append('T', $('imp-T').value);
+  $('imp-go').disabled = true; toast('Import en cours…');
+  try {
+    const d = await (await fetch('/api/clf/models/import', {method:'POST', body:fd})).json();
+    if (!d.ok) return toast(d.msg || 'Échec de l\'import', 'err');
+    toast('Modèle importé : ' + d.name, 'ok'); $('imp').hidden = true; $('imp-file').value = ''; $('imp-keras').hidden = true;
+    await refreshModels(); pickPre(d.name);
+  } finally { $('imp-go').disabled = false; }
+});
+async function refreshModels() { S.meta.models = (await (await fetch('/api/clf/models')).json()).models; renderFams(); renderPredModels(); }
+$('pre-del').addEventListener('click', async () => {
+  if (!S.sel || S.sel.type!=='pre' || !confirm('Supprimer le modèle « ' + S.sel.name + ' » ?')) return;
+  const d = await post('/api/clf/models/delete', {name:S.sel.name}); if (!d.ok) return toast(d.msg,'err');
+  S.sel = null; $('pre-card').hidden = true; $('train-card').hidden = true; $('hint').hidden = false; $('sensors').disabled = $('T').disabled = false;
+  await refreshModels(); toast('Supprimé','ok');
+});
+
+// ── filtres ──
+function renderChips() {
+  const mk = (list, set, el) => $(el).innerHTML = list.map(x=>`<span class="tg ${set.has(x)?'on':''}" data-v="${x}">${x.replace('Gesture_','G').replace('P0','P')}</span>`).join('');
+  mk(S.meta.gestures, S.gs, 'g-chips'); mk(S.meta.participants, S.ps, 'p-chips');
+  const ng = S.meta.gestures.length - S.gs.size, np = S.meta.participants.length - S.ps.size;
+  $('flt-n').textContent = (ng||np) ? `(${S.gs.size} gestes, ${S.ps.size} participants)` : '';
+  estimate();
+}
+for (const [chips, key, all, none, list] of [['g-chips','gs','g-all','g-none','gestures'],['p-chips','ps','p-all','p-none','participants']]) {
+  $(chips).addEventListener('click', e => { const t=e.target.closest('[data-v]'); if(!t) return; const s=S[key]; s.has(t.dataset.v)?s.delete(t.dataset.v):s.add(t.dataset.v); renderChips(); validate(); });
+  $(all).addEventListener('click', e => { e.preventDefault(); S.meta[list].forEach(x=>S[key].add(x)); renderChips(); validate(); });
+  $(none).addEventListener('click', e => { e.preventDefault(); S[key].clear(); renderChips(); validate(); });
+}
+const sel = (set, all) => set.size === all.length ? [] : [...set];
+
+// ── scénario / normalisation / réglages ──
+function scnUpdate(){ document.querySelectorAll('#scn button').forEach(b=>b.classList.toggle('on', b.dataset.v===S.scenario)); $('scn-help').textContent = SCN_HELP[S.scenario]; estimate(); }
+$('scn').addEventListener('click', e => { const b=e.target.closest('button'); if(!b) return; S.scenario=b.dataset.v; scnUpdate(); });
+function normUpdate(){ $('norm-help').textContent = NORM_HELP[$('norm').value] || ''; }
+$('norm').addEventListener('change', normUpdate);
+['sensors','T'].forEach(id => $(id).addEventListener('change', validate));
+$('dp-on').addEventListener('change', () => { $('dp').disabled = !$('dp-on').checked; });
+$('es').addEventListener('change', () => { $('pat').disabled = !$('es').checked; });
+$('tu-on').addEventListener('change', () => { $('tu-body').hidden = !$('tu-on').checked; estimate(); });
+$('sv').addEventListener('change', () => { $('sv-row').hidden = !$('sv').checked; estimate(); });
+$('tu-bs-chips').addEventListener('click', e => { const t=e.target.closest('[data-v]'); if(!t) return; const v=+t.dataset.v; S.bs.has(v)?S.bs.delete(v):S.bs.add(v); t.classList.toggle('on'); });
+['epochs','tu-n','tu-ep','tu-scope'].forEach(id => $(id).addEventListener('input', estimate));
+function estimate() {
+  if (!S.meta || !S.sel) return;
+  const m = S.meta, nf = S.scenario==='louo' ? Math.max(S.ps.size,0) : m.reps.length;
+  if (S.mode==='evaluate' && S.sel.type==='pre') { $('est').textContent = 'Évaluation directe — quelques secondes.'; return; }
+  const E = +$('epochs').value || 0, tu = $('tu-on').checked;
+  const tuning = tu ? ((+$('tu-n').value||0)+1) * (+$('tu-ep').value||0) * ($('tu-scope').value==='fold' ? nf : 1) : 0;
+  const total = nf*E + tuning + ($('sv').checked ? E : 0);
+  $('est').textContent = `≈ ${total.toLocaleString()} époques au total (${nf} plis${tu ? ', dont ' + tuning.toLocaleString() + ' pour la recherche' : ''})`;
+}
+
+// ── blocs ──
+function renderStack() {
+  const lay = S.layers;
+  let h = '';
+  S.blocks.forEach((b, i) => {
+    const def = S.meta.blocks[b.type], ps = Object.keys(def.params);
+    h += `<div class="blk c-${def.cat}" data-i="${i}">
+      <span class="nm" draggable="true" data-drag="${i}">⠿ ${def.label}</span>` +
+      ps.map(k => {
+        const v = b[k];
+        if (k === 'activation') return `<label>${k}<select data-i="${i}" data-k="${k}">${S.meta.acts.map(a=>`<option ${a===v?'selected':''}>${a}</option>`).join('')}</select></label>`;
+        if (k === 'bidirectional' || k === 'return_seq') return `<label><input type="checkbox" data-i="${i}" data-k="${k}" ${+v?'checked':''}>${k==='bidirectional'?'bi':'séquence'}</label>`;
+        return `<label>${k}<input type="number" data-i="${i}" data-k="${k}" value="${v}" step="${k==='p'?0.05:1}"></label>`;
+      }).join('') +
+      `<span class="out">${lay[i] ? '→ ' + lay[i].out : ''}</span><button class="x" data-del="${i}">✕</button></div>`;
+  });
+  h += `<div class="blk c-io fixed"><span class="nm">Sortie</span><span style="font-size:.68rem">Dense(classes) + softmax</span><span class="out">${lay.length ? lay[lay.length-1].out.split(' (')[0] : ''}</span></div>`;
+  $('stack').innerHTML = S.blocks.length ? h : '<div class="help">Aucun bloc — clique sur la palette.</div>' + h;
+}
+$('palette').addEventListener('click', e => { const a=e.target.closest('[data-add]'); if(!a) return; S.blocks.push(fill({type:a.dataset.add})); renderStack(); validate(); });
+$('stack').addEventListener('click', e => { const d=e.target.closest('[data-del]'); if(d){ S.blocks.splice(+d.dataset.del,1); renderStack(); validate(); } });
+$('stack').addEventListener('change', e => {
+  const t=e.target; if (t.dataset.k === undefined) return;
+  S.blocks[+t.dataset.i][t.dataset.k] = t.type==='checkbox' ? (t.checked?1:0) : (t.tagName==='SELECT' ? t.value : parseFloat(t.value));
+  validate();
+});
+let dragFrom = null;
+$('stack').addEventListener('dragstart', e => { const n=e.target.closest('[data-drag]'); if(!n) return; dragFrom=+n.dataset.drag; e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain', ''); });
+$('stack').addEventListener('dragover', e => { const b=e.target.closest('.blk[data-i]'); if(dragFrom===null||!b) return; e.preventDefault(); document.querySelectorAll('.blk.over').forEach(x=>x.classList.remove('over')); b.classList.add('over'); });
+$('stack').addEventListener('drop', e => { const b=e.target.closest('.blk[data-i]'); if(dragFrom===null||!b) return; e.preventDefault(); const to=+b.dataset.i; const [m]=S.blocks.splice(dragFrom,1); S.blocks.splice(to,0,m); dragFrom=null; renderStack(); validate(); });
+$('stack').addEventListener('dragend', () => { dragFrom=null; document.querySelectorAll('.blk.over').forEach(x=>x.classList.remove('over')); });
+$('b-reset').addEventListener('click', () => { if (S.sel && S.sel.type==='family') { S.blocks = JSON.parse(JSON.stringify(S.meta.families[S.sel.key].blocks)).map(fill); renderStack(); validate(); } });
+$('b-clear').addEventListener('click', () => { S.blocks=[]; renderStack(); validate(); });
+$('b-save').addEventListener('click', () => { const n = prompt('Nom de l\'architecture :'); if(!n) return; const all = JSON.parse(localStorage.getItem('clf_models')||'{}'); all[n]=S.blocks; localStorage.setItem('clf_models', JSON.stringify(all)); toast('Architecture enregistrée dans ce navigateur','ok'); });
+$('b-load').addEventListener('click', () => { const all = JSON.parse(localStorage.getItem('clf_models')||'{}'); const names=Object.keys(all);
+  if(!names.length){ toast('Aucune architecture enregistrée','err'); return; } const n = prompt('Charger laquelle ?\n' + names.join('\n')); if(!n||!all[n]) return;
+  S.blocks = all[n].map(fill); renderStack(); validate(); });
+
+async function validate() {
+  if (!S.sel || S.sel.type !== 'family') return;
+  const tk = S.validating = {}; const v = $('verdict');
+  if (!S.blocks.length) { S.layers=[]; v.className='verdict'; v.textContent='Ajoute des blocs'; renderStack(); return; }
+  const body = {blocks:S.blocks, T:+$('T').value||100, sensors:$('sensors').value, gestures: sel(S.gs, S.meta.gestures)};
+  const d = await post('/api/clf/validate', body);
+  if (S.validating !== tk) return;
+  if (d.ok) { S.layers = d.layers; v.className='verdict ok';
+    v.textContent = `✔ Architecture valide · entrée ${body.T}×${d.F} · ${d.params!=null ? d.params.toLocaleString()+' paramètres' : 'paramètres : torch absent'}`; }
+  else { S.layers = []; v.className='verdict err'; v.textContent = '✕ ' + d.msg; }
+  renderStack();
+}
+
+// ── lancement ──
+function tuneBody() {
+  const n = id => +$(id).value;
+  return { enabled:$('tu-on').checked, trials:n('tu-n'), trial_epochs:n('tu-ep'), scope:$('tu-scope').value,
+    space:{ lr:[n('tu-lr-lo'), n('tu-lr-hi')], weight_decay:[n('tu-wd-lo'), n('tu-wd-hi')], dropout:[n('tu-dp-lo'), n('tu-dp-hi')], batch:[...S.bs].sort((a,b)=>a-b) },
+    use:{ lr:$('tu-lr').checked, weight_decay:$('tu-wd').checked, dropout:$('tu-dp').checked, batch:$('tu-bs').checked } };
+}
+$('run').addEventListener('click', async () => {
+  if (!S.sel) return toast('Choisis d\'abord un classifieur', 'err');
+  const body = { scenario:S.scenario, norm:$('norm').value, sensors:$('sensors').value, T:+$('T').value,
+    gestures:sel(S.gs,S.meta.gestures), participants:sel(S.ps,S.meta.participants),
+    epochs:+$('epochs').value, batch:+$('batch').value, lr:+$('lr').value, weight_decay:+$('wd').value, seed:+$('seed').value,
+    optimizer:$('optimizer').value, scheduler:$('scheduler').value, dropout:$('dp-on').checked ? +$('dp').value : null,
+    aug_noise:+$('noise').value || 0, early_stop:$('es').checked, patience:+$('pat').value, tune:tuneBody(),
+    save_final:$('sv').checked, model_name:$('sv-name').value };
+  if (S.sel.type === 'family') { body.family = S.sel.key; body.blocks = S.blocks; }
+  else { body.pretrained = S.sel.name; body.mode = S.mode; }
+  const d = await post('/api/clf/start', body);
+  d.ok ? (toast('Lancé','ok'), $('results').style.display='none', $('results').dataset.shown='', poll()) : toast(d.msg || 'Erreur','err');
+});
+$('cancel').addEventListener('click', () => fetch('/api/clf/cancel', {method:'POST'}));
+
+let timer = null, wasRunning = false;
+async function poll() {
+  clearTimeout(timer);
+  const s = await (await fetch('/api/clf/status')).json();
+  S.running = s.running; $('run').disabled = s.running; $('cancel').disabled = !s.running;
+  $('p-stage').textContent = s.running || s.stage ? `${s.stage || 'Inactif'}${s.running && s.folds ? ` — pli ${s.fold}/${s.folds}` : ''}${s.running && s.trials ? ` · essai ${s.trial}/${s.trials}` : ''}` : 'Inactif';
+  const per = s.epochs ? s.epoch/s.epochs : 0;
+  let frac;
+  if (s.trials) frac = s.folds ? ((Math.max(s.fold-1,0) + (s.trial-1+per)/s.trials*0.5) / s.folds) : (s.trial-1+per)/s.trials;
+  else frac = s.folds ? ((Math.max(s.fold-1,0) + per) / s.folds) : 0;
+  $('p-bar').style.width = (s.stage==='Terminé' ? 100 : Math.min(100, 100*frac)) + '%';
+  $('p-msg').textContent = (s.running ? `époque ${s.epoch}/${s.epochs}${s.loss!=null?` · loss ${s.loss}`:''} · ${s.elapsed}s · ` : '') + (s.message || '');
+  if (s.fold_results && s.fold_results.length && !s.result) renderPartial(s.fold_results);
+  if (s.result && (wasRunning || !$('results').dataset.shown)) { renderResult(s.result); $('results').dataset.shown = 1; loadRuns(); if (s.result.saved_model) refreshModels(); }
+  if (s.stage === 'Erreur' && wasRunning) toast(s.message, 'err');
+  wasRunning = s.running;
+  if (s.running) timer = setTimeout(poll, 1000);
+}
+function renderPartial(fr) {
+  $('results').style.display='block'; $('tiles').innerHTML=''; $('cm').innerHTML=''; $('pcls').innerHTML=''; $('r-note').innerHTML=''; $('tune-card').hidden=true;
+  foldsTable(fr); lossChart(fr);
+}
+
+// ── résultats ──
+const pct = v => v == null ? '—' : (100*v).toFixed(1) + ' %';
+const colAcc = v => v >= .9 ? '#4fffb0' : v >= .7 ? '#f6c90e' : '#ff4f7b';
+const g3 = v => v == null ? '—' : (+v).toPrecision(3).replace(/\.?0+$/, '').replace(/e\+?/, 'e');
+function foldsTable(fr) {
+  const hasHp = fr.some(f => f.hp);
+  $('folds').innerHTML = '<table class="t"><thead><tr><th>Pli (test)</th><th class="num">Train</th><th class="num">Test</th><th>Exactitude</th><th class="num">F1 macro</th><th class="num">Loss finale</th>' + (hasHp ? '<th>lr · batch</th>' : '') + '</tr></thead><tbody>' +
+    fr.map(f => `<tr><td><b>${esc(f.fold)}</b></td><td class="num">${f.n_train ?? '—'}</td><td class="num">${f.n_test}</td>
+      <td><span class="bar" style="width:${Math.round(110*f.acc)}px;background:${colAcc(f.acc)}"></span>${pct(f.acc)}</td>
+      <td class="num">${pct(f.f1)}</td><td class="num">${f.loss.length ? f.loss[f.loss.length-1] : '—'}</td>${hasHp ? `<td>${f.hp ? g3(f.hp.lr) + ' · ' + f.hp.batch : ''}</td>` : ''}</tr>`).join('') + '</tbody></table>';
+}
+function lossChart(fr) {
+  if (S.chart) { S.chart.destroy(); S.chart = null; }
+  const has = fr.length && fr[0].loss.length && typeof Chart !== 'undefined'; $('loss-card').hidden = !has; if (!has) return;   // le reste de la page ne dépend pas de Chart.js
+  const pal = ['#5b8dee','#4fffb0','#f6c90e','#ff4f7b','#c084fc','#2dd4bf','#f97316','#9bb9ff'];
+  S.chart = new Chart($('loss').getContext('2d'), { type:'line',
+    data:{ labels: fr[0].loss.map((_,i)=>i+1), datasets: fr.map((f,i)=>({label:f.fold, data:f.loss, borderColor:pal[i%pal.length], borderWidth:1.3, pointRadius:0, tension:.15})) },
+    options:{ responsive:true, maintainAspectRatio:false, animation:false,
+      plugins:{ legend:{ display:fr.length<=12, labels:{color:'#e2e8f0', font:{family:'DM Mono', size:9}, boxWidth:8} } },
+      scales:{ x:{ ticks:{color:'#4a5568', font:{size:9}}, grid:{color:'#1a2030'} }, y:{ ticks:{color:'#4a5568', font:{size:9}}, grid:{color:'#1e2435'} } } } });
+}
+function tuneTable(tl) {
+  $('tune-card').hidden = !(tl && tl.length); if (!tl || !tl.length) return;
+  $('tune').innerHTML = tl.map(t => `<div class="lab" style="margin:8px 0 4px">${t.fold==='unique' ? 'Recherche unique (train du 1ᵉʳ pli)' : 'Pli ' + esc(t.fold)}</div>
+    <table class="t"><thead><tr><th>#</th><th class="num">learning rate</th><th class="num">weight decay</th><th class="num">batch</th><th class="num">dropout</th><th>Validation interne</th></tr></thead><tbody>` +
+    t.trials.map((r,i) => `<tr class="${i===t.best?'best':''}"><td>${r.manual ? 'manuel' : i}${i===t.best?' ★':''}</td><td class="num">${g3(r.lr)}</td><td class="num">${g3(r.weight_decay)}</td><td class="num">${r.batch}</td><td class="num">${r.dropout==null?'—':g3(r.dropout)}</td>
+      <td><span class="bar" style="width:${Math.round(110*r.val_acc)}px;background:${colAcc(r.val_acc)}"></span>${pct(r.val_acc)}</td></tr>`).join('') + '</tbody></table>').join('');
+}
+function renderResult(r) {
+  $('results').style.display = 'block';
+  const c = r.cfg, ev = r.mode === 'evaluate';
+  let note = '';
+  if (ev && r.overlap && r.overlap.length) note += `<div class="note">⚠ ${r.overlap.length} participant(s) évalué(s) (${esc(r.overlap.slice(0,8).join(', '))}${r.overlap.length>8?'…':''}) faisaient partie de l'entraînement de ce modèle : le score est optimiste pour eux. Filtre-les dans « Participants » pour une évaluation honnête.</div>`;
+  if (ev && !(r.overlap && r.overlap.length) && c.pretrained) note += `<div class="note" style="border-color:var(--border);color:var(--muted)">Évaluation directe du modèle « ${esc(c.pretrained)} » — aucun entraînement. Les « plis » ne servent qu'à ventiler le score.</div>`;
+  if (r.saved_model) note += `<div class="note" style="border-color:var(--green);color:var(--green)">✔ Modèle final enregistré : <b>${esc(r.saved_model)}</b> — disponible dans « Modèles déjà entraînés » et dans « Reconnaître un geste ».</div>`;
+  $('r-note').innerHTML = note;
+  const hp = r.hp_base ? ` · lr ${g3(r.hp_base.lr)}` : '';
+  $('tiles').innerHTML =
+    `<div class="tile" style="--tc:#4fffb0"><b>${pct(r.acc_mean)}</b><span>Exactitude moy. (± ${(100*r.acc_std).toFixed(1)})</span></div>
+     <div class="tile" style="--tc:#5b8dee"><b>${pct(r.f1_mean)}</b><span>F1 macro moyen</span></div>
+     <div class="tile" style="--tc:#c084fc"><b>${r.folds.length}</b><span>Plis (${c.scenario.toUpperCase()})</span></div>
+     <div class="tile" style="--tc:#f6c90e"><b>${r.classes.length}</b><span>Gestes · ${r.n_samples} rép.</span></div>
+     <div class="tile" style="--tc:#2dd4bf"><b>${r.params == null ? '—' : r.params < 1000 ? r.params : (r.params/1000).toFixed(0)+' k'}</b><span>Paramètres</span></div>
+     <div class="tile" style="--tc:#9aa6bd"><b>${r.duration_s}s</b><span>${r.device} · ${esc(c.norm)}${hp}</span></div>`;
+  foldsTable(r.folds); lossChart(r.folds); tuneTable(r.tuning);
+  const short = r.classes.map(g => g.replace('Gesture_','')), cm = r.confusion;
+  let h = '<thead><tr><th class="r"></th>' + short.map(s=>`<th>${s}</th>`).join('') + '</tr></thead><tbody>';
+  cm.forEach((row, i) => { const sum = row.reduce((a,b)=>a+b,0) || 1;
+    h += `<tr><th class="r">${short[i]}</th>` + row.map((v,j) => { const t = v/sum;
+      const bg = v===0 ? 'rgba(255,255,255,.04)' : i===j ? `rgba(79,255,176,${.25+.75*t})` : `rgba(255,79,123,${.25+.75*Math.min(1,t*2)})`;
+      return `<td style="background:${bg}" title="réel ${short[i]} → prédit ${short[j]} : ${v} (${(100*t).toFixed(0)} %)">${v||''}</td>`; }).join('') + '</tr>'; });
+  $('cm').innerHTML = h + '</tbody>';
+  const order = r.classes.map((g,i)=>[g, r.per_class_acc[i]]).sort((a,b)=>(a[1]??2)-(b[1]??2));
+  $('pcls').innerHTML = '<table class="t"><tbody>' + order.map(([g,a]) => `<tr><td>${g.replace('_',' ')}</td><td><span class="bar" style="width:${Math.round(200*(a||0))}px;background:${colAcc(a||0)}"></span>${pct(a)}</td></tr>`).join('') + '</tbody></table>';
+}
+
+// ── reconnaître un geste ──
+async function loadTree() { try { S.tree = await (await fetch('/api/clf/tree')).json(); } catch(e) { S.tree = {}; }
+  $('pr-p').innerHTML = Object.keys(S.tree).map(p=>`<option>${p}</option>`).join(''); prP(); }
+function prP() { const t = S.tree[$('pr-p').value] || {}; $('pr-g').innerHTML = Object.keys(t).map(g=>`<option>${g}</option>`).join(''); prG(); }
+function prG() { const l = ((S.tree[$('pr-p').value]||{})[$('pr-g').value]) || []; $('pr-f').innerHTML = l.map(f=>`<option value="${esc(f.path)}">rep ${f.rep}</option>`).join(''); }
+$('pr-p').addEventListener('change', prP); $('pr-g').addEventListener('change', prG);
+function renderPredModels() {
+  const l = S.meta.models; $('pr-model').innerHTML = l.length ? l.map(m=>`<option value="${esc(m.name)}">${esc(m.name)} (${{keras:'Keras', torchscript:'TorchScript', torch:'PyTorch'}[m.kind]})</option>`).join('') : '<option value="">Aucun modèle — entraîne-en un avec « Enregistrer », ou importe-en un</option>';
+}
+$('pr-go').addEventListener('click', async () => {
+  const model = $('pr-model').value, file = $('pr-f').value; if (!model || !file) return toast('Choisis un modèle et une répétition','err');
+  const d = await post('/api/clf/predict', {model, file}); if (!d.ok) return toast(d.msg,'err');
+  $('pr-out').innerHTML = `<div class="verdict ${d.correct?'ok':'err'}" style="margin:10px 0">Réel : <b>${esc(d.truth.replace('_',' '))}</b> → prédit : <b>${esc(d.top[0].gesture.replace('_',' '))}</b> (${pct(d.top[0].p)}) ${d.correct?'✔':'✕'}</div>` +
+    '<table class="t"><tbody>' + d.top.map(t=>`<tr><td>${esc(t.gesture.replace('_',' '))}</td><td><span class="pred-bar" style="width:${Math.round(220*t.p)}px;background:${t.gesture===d.truth?'#4fffb0':'#5b8dee'}"></span> ${pct(t.p)}</td></tr>`).join('') + '</tbody></table>';
+});
+
+// ── historique ──
+async function loadRuns() {
+  const d = await (await fetch('/api/clf/runs')).json();
+  const MODE = {train:'Entraîné', evaluate:'Évalué', finetune:'Affiné'};
+  $('runs').innerHTML = d.runs.length ? '<table class="t"><thead><tr><th>Date</th><th>Scénario</th><th>Mode</th><th>Modèle</th><th class="num">Exactitude</th><th class="num">F1</th><th></th></tr></thead><tbody>' +
+    d.runs.map(r => `<tr><td>${(r.when||'').replace('T',' ')}</td><td>${r.scenario.toUpperCase()}</td><td>${MODE[r.mode]||r.mode}${r.tuned?' · recherche':''}</td><td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.layers)}">${esc(r.family?r.family+' · ':'')}${esc(r.layers)}</td>
+      <td class="num"><b>${pct(r.acc)}</b> ± ${(100*r.std).toFixed(1)}</td><td class="num">${pct(r.f1)}</td><td><button class="btn ghost" data-run="${r.file}">Ouvrir</button></td></tr>`).join('') + '</tbody></table>'
+    : '<div class="help">Aucun entraînement enregistré (data_clean/classification/).</div>';
+}
+$('runs').addEventListener('click', async e => { const b=e.target.closest('[data-run]'); if(!b) return;
+  const r = await (await fetch('/api/clf/run?file='+encodeURIComponent(b.dataset.run))).json(); if (r.error) return toast(r.error,'err');
+  renderResult(r); window.scrollTo({top:0, behavior:'smooth'}); });
+$('runs-refresh').addEventListener('click', loadRuns);
+init();
+</script>
+</body>
+</html>
